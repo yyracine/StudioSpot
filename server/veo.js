@@ -63,8 +63,13 @@ function toVeoError(err, stage) {
     });
   }
   if (/quota|RESOURCE_EXHAUSTED|429|rate limit/i.test(raw + details)) {
-    return new VeoError('Quota Veo atteint ou débit trop élevé.', {
-      hint: 'Patientez quelques minutes ou vérifiez votre palier de facturation Google AI.',
+    return new VeoError('Veo a refusé la requête : quota ou accès indisponible (429).', {
+      hint:
+        'Cause la plus fréquente : le projet Google lié à la clé n’est pas sur un palier payant. ' +
+        'Veo est un modèle « preview » qui exige un compte de facturation actif (palier Tier 1). ' +
+        'Vérifiez vos limites réelles sur https://aistudio.google.com/rate-limit : si Veo y affiche 0, ' +
+        'il faut activer la facturation sur le projet. Sinon, patientez une minute et réessayez. ' +
+        'En attendant, vous pouvez produire la vidéo en mode démo local (sans Veo).',
       details: details || raw,
       cause: err,
     });

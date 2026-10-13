@@ -215,6 +215,11 @@ là aussi une vidéo réellement muette.
 Cela permet de valider le cadrage, le texte et le montage sans dépenser le
 moindre crédit Veo. L'interface signale clairement ce mode.
 
+Ce mode sert aussi de **repli immédiat** : si un appel Veo est refusé (quota,
+accès, filtre de sécurité), la zone d'erreur propose « **Relancer en mode démo
+local** », qui reproduit la vidéo à partir de la même photo et des mêmes
+réglages, sans nouvel appel Veo. Vous n'êtes jamais laissé sans résultat.
+
 ---
 
 ## Coûts et temps de production
@@ -259,7 +264,7 @@ Toutes les variables sont optionnelles sauf la clé (`voir .env.example`) :
 | `GET` | `/api/jobs/:id/poster` | Image de poster. |
 | `GET` | `/api/jobs/:id/source` | Photo source (aperçu). |
 | `GET` | `/api/jobs/:id/meta` | Métadonnées (réglages, prompt utilisé). |
-| `POST` | `/api/jobs/:id/retry` | Relance avec les mêmes réglages. |
+| `POST` | `/api/jobs/:id/retry` | Relance avec les mêmes réglages. Corps `{"mode":"demo"}` pour forcer un rendu local sans appel Veo. |
 | `POST` | `/api/settings/api-key` | Enregistre et vérifie la clé Gemini. |
 | `POST` | `/api/settings/api-key/clear` | Retire la clé (retour au mode démo). |
 | `POST` | `/api/settings/api-key/test` | Teste une clé sans l'enregistrer. |
@@ -293,14 +298,20 @@ node scripts/smoke-test.mjs --duration 5 --vertical --ambiance luxe --videoType 
 Le test de bout en bout :
 
 1. fabrique une **photo produit synthétique** avec ffmpeg ;
-2. envoie le formulaire complet ;
+2. envoie le formulaire complet en **forçant le mode démo local** ;
 3. suit la production réelle ;
 4. télécharge la vidéo et **vérifie la durée, la définition et la présence ou
    l'absence de piste audio** ;
 5. contrôle la cohérence des identifiants DOM entre `index.html` et `app.js`.
 
-Il fonctionne **sans clé API** (via le mode démo), ce qui exerce exactement le
-même chemin de post-production : incrustation texte, coupe et suppression audio.
+Il est **gratuit et déterministe** : il n'appelle jamais Veo, même quand une clé
+est configurée, et exerce exactement le même chemin de post-production
+(incrustation texte, coupe, suppression audio). Pour tester un vrai appel Veo
+(un crédit est consommé) :
+
+```bash
+node scripts/smoke-test.mjs --veo
+```
 
 ---
 
@@ -331,6 +342,8 @@ scripts/
 |---|---|
 | Le bandeau indique « Mode démo local » | Aucune clé API valide. Cliquez sur « Réglages » et ajoutez la clé. |
 | « Clé API refusée par Google » | Clé erronée ou expirée : régénérez-la dans AI Studio. |
+| **« Veo a refusé la requête : quota ou accès indisponible (429) »** | Cause la plus fréquente : **le projet Google n'est pas sur un palier payant**. Veo est un modèle *preview* qui exige un compte de facturation actif (palier **Tier 1** : « link an active billing account »). Vérifiez vos limites réelles sur <https://aistudio.google.com/rate-limit> : **si Veo y affiche 0, il faut activer la facturation** sur le projet lié à la clé. S'il s'agit d'une vraie limite de débit, patientez une minute. Le message « check your plan and billing details » de Google désigne le palier, pas une panne. |
+| Bloqué par ce 429 et vous voulez avancer tout de suite | Cliquez sur **« Relancer en mode démo local »** dans la zone d'erreur : la vidéo est produite immédiatement, avec le même habillage et la même bande son, sans appel Veo ni coût. |
 | « Veo n'est pas disponible pour ce projet » | Facturation absente sur le projet Google, ou région non desservie. |
 | « La génération a été bloquée par les filtres de sécurité » | Photo ou message refusé (allégations santé, marque tierce, personne identifiable). Changez la photo ou reformulez le message. |
 | « Veo n'a renvoyé aucune vidéo » | Fréquent quand l'**audio** est bloqué par les filtres. Relancez la génération. |

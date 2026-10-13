@@ -9,14 +9,16 @@
  *   4. télécharge la vidéo finale et vérifie sa durée, sa définition et sa
  *      piste audio (présente ou non).
  *
- * Aucune clé API n'est nécessaire : sans clé, l'application bascule en mode
- * démo local, ce qui exerce exactement le même chemin de post-production
- * (habillage texte ffmpeg, coupe, suppression audio).
+ * Aucune clé API n'est nécessaire : le test force explicitement le mode démo
+ * local (`mode: 'demo'`), ce qui exerce exactement le même chemin de
+ * post-production (habillage texte ffmpeg, coupe, suppression audio) sans
+ * consommer le moindre crédit Veo.
  *
  * Usage :
  *   node scripts/smoke-test.mjs                  # 8 s, ambiance corporate
  *   node scripts/smoke-test.mjs --duration 5
  *   node scripts/smoke-test.mjs --duration 15 --ambiance aucun --vertical
+ *   node scripts/smoke-test.mjs --veo            # vrai appel Veo (payant)
  */
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -255,13 +257,22 @@ async function main() {
     model: 'veo-3.1-generate-preview',
   };
 
+  // Par défaut, on impose le rendu local : le test reste gratuit, déterministe
+  // et vérifie le même chemin de post-production. `--veo` lance un vrai appel.
+  const useVeo = flag('veo');
+  if (!useVeo) fields.mode = 'demo';
+
   const { body, contentType } = multipart(fields, {
     filename: path.basename(PHOTO),
     mimeType: 'image/jpeg',
     data: await readFile(PHOTO),
   });
 
-  console.log(`→ production ${DURATION} s · ${AMBIANCE} · ${VIDEO_TYPE} · texte=${TEXT_MODE}`);
+  console.log(
+    `→ production ${DURATION} s · ${AMBIANCE} · ${VIDEO_TYPE} · texte=${TEXT_MODE} · moteur=${
+      useVeo ? 'Veo (appel réel, payant)' : 'démo locale'
+    }`,
+  );
   const created = await request('POST', '/api/jobs', {
     body,
     headers: { 'Content-Type': contentType, 'Content-Length': body.length },
@@ -326,6 +337,7 @@ async function main() {
     AMBIANCE === 'aucun' ? hasAudioStream === false : hasAudioStream === true,
   ]);
   checks.push(['fichier non vide', video.buffer.length > 20_000]);
+  if (!useVeo) checks.push(['moteur = rendu local', job.result.mode === 'demo', job.result.mode]);
 
   const poster = await request('GET', `/api/jobs/${jobId}/poster`);
   checks.push(['poster disponible', poster.status === 200 && poster.buffer.length > 1000]);

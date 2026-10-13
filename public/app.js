@@ -292,6 +292,7 @@ function wireStaticEvents() {
 
   $('regenerateBtn').addEventListener('click', regenerate);
   $('retryBtn').addEventListener('click', regenerate);
+  $('demoFallbackBtn').addEventListener('click', () => regenerate({ mode: 'demo' }));
   $('newBtn').addEventListener('click', resetAll);
   $('copyPromptBtn').addEventListener('click', async () => {
     try {
@@ -526,21 +527,33 @@ async function startGeneration() {
   }
 }
 
-/** Relance la production avec les mêmes réglages (nouvel appel facturé). */
-async function regenerate() {
+/**
+ * Relance la production avec les mêmes réglages.
+ * @param {{mode?: 'demo'}} [options] `mode: 'demo'` force un rendu local sans
+ *   appel Veo — utilisé comme repli quand Veo refuse la requête.
+ */
+async function regenerate(options = {}) {
   if (state.running || !state.jobId) return;
+
+  // Important : mémoriser l'identifiant AVANT enterRunningState(), qui le
+  // réinitialise pour la nouvelle production.
+  const previousId = state.jobId;
+  const demo = options.mode === 'demo';
+
   enterRunningState();
-  logLine('Nouvelle tentative…');
+  logLine(demo ? 'Relance en mode démo local (sans Veo)…' : 'Nouvelle tentative…');
 
   try {
-    const { job } = await api(`/api/jobs/${state.jobId}/retry`, {
+    const { job } = await api(`/api/jobs/${previousId}/retry`, {
       method: 'POST',
-      body: JSON.stringify({}),
+      body: JSON.stringify(demo ? { mode: 'demo' } : {}),
     });
     state.jobId = job.id;
     applyJob(job);
     openStream(job.id);
   } catch (err) {
+    // On restaure l'identifiant pour que le repli reste proposé.
+    state.jobId = previousId;
     exitRunningState();
     showError({ message: err.message, hint: err.payload?.hint, details: err.payload?.details });
   }
@@ -757,6 +770,12 @@ function showError(error) {
   setStageMode('placeholder');
   $('stageTitle').textContent = 'Production interrompue';
   $('stageSubtitle').textContent = 'Corrigez le point signalé puis relancez la production.';
+
+  // Repli proposé uniquement quand un appel Veo était en jeu : l'utilisateur
+  // n'est jamais laissé sans solution (quota, accès, filtre de sécurité…).
+  const canFallback = state.health?.mode === 'veo' && Boolean(state.jobId);
+  $('demoFallbackBtn').hidden = !canFallback;
+  $('demoFallbackNote').hidden = !canFallback;
 }
 
 function logLine(message, level = 'info') {

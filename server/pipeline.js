@@ -116,14 +116,17 @@ export async function runJob(job) {
     if (demoMode) {
       updateJob(job.id, {
         stage: 'generate',
-        detail: 'Rendu local de démonstration…',
+        stageLabel: 'Rendu local de la vidéo',
+        detail: 'Animation de la photo et habillage…',
         progress: band(4, 62, 0.1),
       });
       logJob(
         job.id,
-        job.input.useVeo
-          ? 'Mode démo forcé : rendu local de la photo.'
-          : 'Aucune clé API Veo : rendu local de démonstration (Ken Burns + habillage).',
+        job.input.demoRequested
+          ? 'Mode démo demandé : rendu local de la photo, aucun appel Veo.'
+          : job.input.useVeo
+            ? 'Mode démo forcé (DEMO=1) : rendu local de la photo.'
+            : 'Aucune clé API Veo : rendu local de démonstration (animation + habillage).',
         'warn',
       );
       await renderDemoVideo({

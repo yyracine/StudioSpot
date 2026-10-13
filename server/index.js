@@ -107,6 +107,10 @@ function readForm(req, { sourcePath = null } = {}) {
   const seedRaw = Number.parseInt(req.body.seed, 10);
   const seed = Number.isInteger(seedRaw) && seedRaw >= 0 ? seedRaw : null;
 
+  // `mode: 'demo'` force un rendu local : utilisé comme repli quand Veo refuse
+  // la requête (quota, accès), pour ne pas laisser l'utilisateur bloqué.
+  const demoRequested = req.body.mode === 'demo';
+
   return {
     input: {
       productName,
@@ -120,7 +124,8 @@ function readForm(req, { sourcePath = null } = {}) {
       model: modelId,
       seed,
       sourcePath,
-      useVeo: hasApiKey(),
+      useVeo: hasApiKey() && !demoRequested,
+      demoRequested,
     },
     errors,
   };

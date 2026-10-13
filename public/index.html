@@ -299,7 +299,16 @@
             <summary>Détails techniques</summary>
             <pre class="console" id="errorDetails"></pre>
           </details>
-          <button type="button" class="ghost-btn" id="retryBtn">Réessayer</button>
+          <div class="result-actions">
+            <button type="button" class="ghost-btn" id="retryBtn">Réessayer</button>
+            <button type="button" class="ghost-btn" id="demoFallbackBtn" hidden>
+              Relancer en mode démo local
+            </button>
+          </div>
+          <p class="muted small" id="demoFallbackNote" hidden>
+            Le mode démo local anime la photo et applique le même habillage, sans appeler Veo :
+            aucun coût, résultat immédiat.
+          </p>
         </div>
       </section>
     </main>

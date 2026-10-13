@@ -94,10 +94,10 @@ export function updateJob(id, patch = {}) {
 
   Object.assign(job, patch, { updatedAt: Date.now() });
 
-  // Le libellé suit toujours l'étape ; la progression par défaut de l'étape
-  // n'est appliquée que si l'appelant n'en fournit pas une plus précise.
+  // Le libellé suit toujours l'étape, sauf si l'appelant en impose un
+  // (ex. rendu local en mode démo, où « Veo filme votre produit » serait faux).
   if (patch.stage && STAGES[patch.stage]) {
-    job.stageLabel = STAGES[patch.stage].label;
+    if (patch.stageLabel === undefined) job.stageLabel = STAGES[patch.stage].label;
     if (patch.progress === undefined) job.progress = STAGES[patch.stage].progress;
   }
 
