@@ -44,13 +44,20 @@ for (const provider of PROVIDERS) {
     `${provider.id} : au moins un appel déclaré`,
     Object.values(plans).every((plan) => plan.steps.length >= 1),
   );
+
+  // `plan.seconds` est la durée PRODUITE par le moteur, `plan.trimTo` la coupe
+  // finale. Ce qui est promis au client, c'est la durée livrée : on compare donc
+  // `trimTo ?? seconds`, sinon un moteur qui produit 5,06 s pour une cible de
+  // 5 s puis coupe à 5 s serait signalé à tort.
+  const delivered = (plan) => plan.trimTo ?? plan.seconds;
   check(
-    `${provider.id} : pas de durée livrée supérieure à la durée demandée`,
-    ['5', '8', '15'].every((id) => plans[id].seconds <= Number(id)),
+    `${provider.id} : la durée livrée ne dépasse pas la durée demandée`,
+    ['5', '8', '15'].every((id) => delivered(plans[id]) <= Number(id)),
+    ['5', '8', '15'].map((id) => `${id}→${delivered(plans[id])}s`).join(' '),
   );
   check(
     `${provider.id} : 15 s atteintes ou limitation annoncée`,
-    plans[15].seconds === 15 || Boolean(plans[15].limitedTo),
+    delivered(plans[15]) === 15 || Boolean(plans[15].limitedTo),
   );
 
   // 2. La requête qui serait envoyée, sans l'envoyer

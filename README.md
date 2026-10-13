@@ -245,9 +245,9 @@ production réel, et **annonce ce qu'il livrera** avant de lancer :
 
 | Demandé | Veo 3.1 | fal.ai / Replicate |
 |---|---|---|
-| **5 s** | Veo génère **6 s**, puis ffmpeg coupe précisément à **5,00 s**. | Un clip de 5 s. |
-| **8 s** | Durée native : **8 s**. | Clip de 5 s → **limité à 5 s**, annoncé comme tel. |
-| **15 s** | 8 s **+ extension de 7 s** = **exactement 15 s** (2 appels). | Clip de 5 s → **limité à 5 s**, annoncé comme tel. |
+| **5 s** | Veo génère **6 s**, puis ffmpeg coupe précisément à **5,00 s**. | Wan produit **5,06 s** (81 images à 16 i/s), coupées à **5,00 s**. |
+| **8 s** | Durée native : **8 s**. | **Limité à 6,25 s** (100 images = plafond du modèle), annoncé comme tel. |
+| **15 s** | 8 s **+ extension de 7 s** = **exactement 15 s** (2 appels). | **Limité à 6,25 s**, annoncé comme tel. |
 
 Contraintes Veo appliquées automatiquement :
 
@@ -364,8 +364,9 @@ Toutes les variables sont optionnelles sauf les clés (voir `.env.example`) :
 | `GEMINI_API_KEY` | — | Clé Google AI Studio (Veo + suggestions de messages). |
 | `FAL_KEY` | — | Clé fal.ai. |
 | `REPLICATE_API_TOKEN` | — | Jeton Replicate. |
-| `FAL_MODEL` | `fal-ai/wan-i2v` | Modèle fal utilisé. |
-| `FAL_CLIP_SECONDS` | `5` | Durée d'un clip produite par ce modèle. |
+| `FAL_MODEL` | `fal-ai/wan-i2v` | Endpoint fal utilisé (doit être un modèle image-to-video). |
+| `FAL_FRAMES_PER_SECOND` | `16` | Cadence du clip fal (5 à 24 i/s selon le modèle). |
+| `FAL_NUM_FRAMES` | `81` | Nombre d'images (81 à 100 selon le modèle). 81 à 16 i/s ≈ 5,06 s ; 100 = 6,25 s. |
 | `REPLICATE_MODEL` | `wan-video/wan-2.2-i2v-fast` | Modèle Replicate (« owner/nom » ou « owner/nom:hash »). |
 | `REPLICATE_CLIP_SECONDS` | `5` | Durée d'un clip produite par ce modèle. |
 | `PROVIDER` | — | Force un moteur (`veo`, `fal`, `replicate`) même si plusieurs clés existent. |
@@ -424,6 +425,7 @@ node scripts/smoke-test.mjs --duration 5 --vertical --ambiance luxe --videoType 
 node scripts/smoke-test.mjs --veo               # vrai appel Veo (payant, consomme du quota)
 
 node scripts/check-providers.mjs                # vérifie les 3 adaptateurs SANS clé
+node scripts/check-provider-schema.mjs          # confronte nos requêtes au schéma officiel fal
 node scripts/check-catalog.mjs                  # vérifie les 11 types × 11 ambiances
 node scripts/probe-key.mjs                      # ce que votre clé Gemini peut réellement appeler
 ```
@@ -458,6 +460,14 @@ il calcule les plans pour 5, 8 et 15 s, puis affiche la **requête exacte qui
 serait envoyée** (URL, en-têtes, corps) sans l'envoyer. C'est ainsi qu'un
 adaptateur se valide **sans clé et sans dépenser un centime**.
 
+**`check-provider-schema.mjs`** va plus loin : il récupère le **schéma OpenAPI
+publié par fal** pour l'endpoint configuré et confronte notre requête à la
+réalité du modèle. C'est ce contrôle qui a révélé que le paramètre `duration`
+n'existe pas chez fal (la durée se pilote par `num_frames` et
+`frames_per_second`) et que son `resolution` n'accepte que `480p` ou `720p` —
+deux erreurs qui auraient fait échouer le premier appel réel en 422. À lancer
+après tout changement de `FAL_MODEL`.
+
 ---
 
 ## Architecture
@@ -482,10 +492,11 @@ public/
   styles.css      thème studio sombre
   app.js          logique client, aperçu fidèle de l'habillage
 scripts/
-  smoke-test.mjs       test de bout en bout (gratuit)
-  check-providers.mjs  vérifie les adaptateurs sans clé
-  check-catalog.mjs    vérifie les 11 types × 11 ambiances
-  probe-key.mjs        ce que la clé Gemini peut réellement appeler
+  smoke-test.mjs             test de bout en bout (gratuit)
+  check-providers.mjs        vérifie les adaptateurs sans clé
+  check-provider-schema.mjs  confronte nos requêtes au schéma officiel fal
+  check-catalog.mjs          vérifie les 11 types × 11 ambiances
+  probe-key.mjs              ce que la clé Gemini peut réellement appeler
 ```
 
 ---
@@ -499,7 +510,7 @@ scripts/
 | **« Veo a refusé la requête : quota ou accès indisponible (429) »** | Cause la plus fréquente : **le projet Google n'est pas sur un palier payant**. Veo est un modèle *preview* qui exige un compte de facturation actif (palier **Tier 1** : « link an active billing account »). Vérifiez vos limites réelles sur <https://aistudio.google.com/rate-limit> : **si Veo y affiche 0, il faut activer la facturation**. Le message « check your plan and billing details » désigne le palier, pas une panne. Lancez `node scripts/probe-key.mjs` pour confirmer. |
 | Bloqué par ce 429 et vous voulez avancer tout de suite | Deux solutions : cliquez sur **« Relancer en mode démo local »**, ou **ajoutez une clé fal.ai / Replicate** (crédits offerts) et choisissez ce moteur dans les options avancées. |
 | « Crédits ou quota insuffisants chez le fournisseur » | Rechargez votre compte fal.ai / Replicate, ou changez de moteur. |
-| La vidéo ne fait que 5 s alors que j'ai demandé 15 s | Le modèle choisi ne produit que des clips de 5 s et ne sait pas les prolonger : c'est annoncé dans le plan avant lancement. Utilisez Veo (extension +7 s) pour atteindre exactement 15 s. |
+| La vidéo ne fait que 6,25 s alors que j'ai demandé 15 s | Le modèle fal `wan-i2v` est plafonné à 100 images, soit 6,25 s : c'est annoncé dans le plan avant lancement. Utilisez Veo (extension +7 s) pour atteindre exactement 15 s. |
 | Le texte n'est pas celui que j'ai écrit | Vous utilisez « Texte généré par Veo » : la restitution du texte par le modèle n'est pas garantie. Choisissez « Incrustation nette », où ffmpeg écrit le texte exact. |
 | La musique ne correspond pas à une vraie bande son | Avec fal.ai / Replicate, aucune IA ne produit l'audio : c'est une nappe locale de ffmpeg. Utilisez Veo (audio natif) ou remplacez la piste en montage. |
 | « Veo n'est pas disponible pour ce projet » | Facturation absente sur le projet Google, ou région non desservie. |
@@ -521,14 +532,15 @@ scripts/
   restent, eux, dans `outputs/`.
 - L'**extension vidéo n'est possible que sur des vidéos générées par Veo**, en
   8 s et 720p — c'est la raison des contraintes appliquées à l'option 15 s.
-- **Les adaptateurs fal.ai et Replicate n'ont pas pu être testés en conditions
-  réelles** (aucune clé disponible pendant le développement). Leur logique est
-  vérifiée sans clé par `check-providers.mjs`, et leur forme d'appel suit la
-  documentation officielle ([file d'attente fal](https://docs.fal.ai/model-endpoints/queue),
-  [API Replicate](https://replicate.com/docs/reference/http)) — mais les **noms de
-  paramètres varient selon le modèle** choisi. Si un modèle refuse un paramètre,
-  ajustez `server/providers/fal.js` / `replicate.js` en vous aidant de
-  `check-providers.mjs`, qui affiche le corps exact envoyé.
+- **L'adaptateur fal.ai est vérifié contre le schéma officiel du modèle**
+  (`check-provider-schema.mjs`) : champs envoyés, champs requis, énumérations et
+  bornes de durée. En revanche, **il n'a pas encore été exécuté avec une vraie
+  clé** : le tout premier appel réel reste à confirmer.
+- **L'adaptateur Replicate n'a pas pu être vérifié du tout** : son schéma exige
+  un jeton (`GET https://api.replicate.com/v1/models/<owner>/<nom>`), que je n'ai
+  pas. Il envoie volontairement un corps minimal (`prompt` + `image`) pour
+  limiter le risque de champ refusé ; si un modèle réclame d'autres entrées,
+  ajoutez-les dans `server/providers/replicate.js`.
 - Les modèles fal/Replicate ne produisent **ni audio ni texte** : la bande son
   est une nappe locale et le texte est incrusté par ffmpeg.
 - Chaque vidéo Veo porte un **filigrane invisible SynthID**.

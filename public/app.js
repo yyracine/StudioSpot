@@ -1072,6 +1072,19 @@ async function handleKeyAction(event) {
     state.options = await api('/api/options');
     applyHealth();
     buildSelects();
+
+    // On sélectionne le moteur correspondant à la clé qu'on vient d'enregistrer :
+    // sans cela, le premier moteur configuré resterait actif (souvent Veo) et
+    // l'utilisateur croirait que sa nouvelle clé est ignorée.
+    if (action === 'save') {
+      const owner = (state.options.providers || []).find((provider) => provider.keyProvider === key);
+      const option = owner && $('provider').querySelector(`option[value="${owner.id}"]`);
+      if (option && !option.disabled) {
+        $('provider').value = owner.id;
+        status.textContent += ` Moteur « ${owner.shortLabel || owner.label} » sélectionné.`;
+      }
+    }
+
     updateEstimate();
     loadDiagnostics();
   } catch (err) {
