@@ -9,54 +9,38 @@
  * construite a partir du nom du produit : l'interface propose toujours quelque
  * chose, sans jamais bloquer.
  */
-import { getKey } from './config.js';
+import { getKey, VIDEO_TYPES, findById } from './config.js';
 import { ProviderError } from './providers/http.js';
 
 const MODEL = 'gemini-2.5-flash';
 const API = 'https://generativelanguage.googleapis.com/v1beta';
 
-/** Replis hors ligne : toujours disponibles, aucun appel reseau. */
-function fallbackSuggestions(productName, videoTypeLabel) {
+/**
+ * Replis hors ligne : toujours disponibles, aucun appel réseau.
+ *
+ * L'accroche liée au type de vidéo vient du catalogue lui-même
+ * (`fallbackAd` dans config.js) : ajouter un type de vidéo n'oblige donc pas
+ * à toucher ce fichier.
+ */
+function fallbackSuggestions(productName, videoTypeId) {
   const name = productName.trim();
-  const bases = [
-    {
-      text: `Nouveau ! ${name} — -30 % cette semaine`,
-      angle: 'Promotion',
-    },
-    {
-      text: `Livraison offerte dès 40 €`,
-      angle: 'Argument logistique',
-    },
-    {
-      text: `${name} : l’essentiel, sans compromis`,
-      angle: 'Promesse produit',
-    },
-    {
-      text: `Édition limitée — stock réduit`,
-      angle: 'Rareté',
-    },
-    {
-      text: `Note 4,9/5 · plus de 2 300 avis`,
-      angle: 'Preuve sociale',
-    },
-    {
-      text: `Le choix des pros depuis 2019`,
-      angle: 'Autorité',
-    },
-  ];
+  const videoType = findById(VIDEO_TYPES, videoTypeId);
 
-  // Une accroche adaptée au type de vidéo choisi.
-  const byType = {
-    rotation360: `${name}, sous tous les angles`,
-    action: `Adoptez ${name} au quotidien`,
-    unboxing: `Découvrez ${name} en 15 secondes`,
-    beforeAfter: `Avant, après : la différence ${name}`,
-  };
-  if (videoTypeLabel && byType[videoTypeLabel.id]) {
-    bases.unshift({ text: byType[videoTypeLabel.id], angle: 'Adapté au type de vidéo' });
+  const suggestions = [];
+  if (typeof videoType?.fallbackAd === 'function') {
+    suggestions.push({ text: videoType.fallbackAd(name), angle: 'Adapté au type de vidéo' });
   }
 
-  return bases.slice(0, 5);
+  suggestions.push(
+    { text: `Nouveau ! ${name} — -30 % cette semaine`, angle: 'Promotion' },
+    { text: `Livraison offerte dès 40 €`, angle: 'Argument logistique' },
+    { text: `${name} : l’essentiel, sans compromis`, angle: 'Promesse produit' },
+    { text: `Édition limitée — stock réduit`, angle: 'Rareté' },
+    { text: `Note 4,9/5 · plus de 2 300 avis`, angle: 'Preuve sociale' },
+    { text: `Le choix des pros depuis 2019`, angle: 'Autorité' },
+  );
+
+  return suggestions.slice(0, 5);
 }
 
 /**
@@ -74,7 +58,7 @@ export async function suggestMessages({ productName, videoTypeId, videoTypeLabel
   }
 
   if (!key) {
-    return { provider: 'repli local', suggestions: fallbackSuggestions(name, { id: videoTypeId }) };
+    return { provider: 'repli local', suggestions: fallbackSuggestions(name, videoTypeId) };
   }
 
   const prompt = [
@@ -109,14 +93,14 @@ export async function suggestMessages({ productName, videoTypeId, videoTypeLabel
     });
   } catch (err) {
     // Réseau indisponible : on dégrade proprement plutôt que d'échouer.
-    return { provider: 'repli local', suggestions: fallbackSuggestions(name, { id: videoTypeId }) };
+    return { provider: 'repli local', suggestions: fallbackSuggestions(name, videoTypeId) };
   }
 
   if (!response.ok) {
     const body = await response.text();
     // Le palier gratuit suffit pour ce modele, mais on reste robuste.
     if (response.status === 429 || /quota/i.test(body)) {
-      return { provider: 'repli local (quota texte atteint)', suggestions: fallbackSuggestions(name, { id: videoTypeId }) };
+      return { provider: 'repli local (quota texte atteint)', suggestions: fallbackSuggestions(name, videoTypeId) };
     }
     throw new ProviderError('Les suggestions n’ont pas pu être générées.', {
       details: body.slice(0, 300),
@@ -152,7 +136,7 @@ export async function suggestMessages({ productName, videoTypeId, videoTypeLabel
     : [];
 
   if (!suggestions.length) {
-    return { provider: 'repli local', suggestions: fallbackSuggestions(name, { id: videoTypeId }) };
+    return { provider: 'repli local', suggestions: fallbackSuggestions(name, videoTypeId) };
   }
 
   return { provider: MODEL, suggestions };

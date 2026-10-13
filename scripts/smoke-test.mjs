@@ -203,8 +203,12 @@ async function auditUi() {
 }
 
 /**
- * Vérifie que les catalogues exposés à l'interface contiennent bien les choix
- * demandés par le cahier des charges.
+ * Vérifie que les catalogues exposés à l'interface contiennent au moins les
+ * choix du cahier des charges initial — et que les ajouts restent cohérents.
+ *
+ * On teste la présence des entrées exigées plutôt qu'un nombre figé : le
+ * catalogue est destiné à s'enrichir, mais rien de ce qui était demandé ne doit
+ * jamais disparaître.
  */
 async function auditCatalog() {
   const { data } = await getJson('/api/options');
@@ -214,13 +218,11 @@ async function auditCatalog() {
   const ambiances = labels(data.ambiances);
   const durations = labels(data.durations);
 
-  const expected = [
-    ['4 types de vidéo', videoTypes.length === 4],
+  const required = [
     ['rotation 360°', videoTypes.some((l) => /360/.test(l))],
-    ['produit en action', videoTypes.some((l) => /action/.test(l))],
+    ['produit en action', videoTypes.some((l) => /action/i.test(l))],
     ['unboxing', videoTypes.some((l) => /nboxing/.test(l))],
     ['avant/après', videoTypes.some((l) => /Avant/.test(l))],
-    ['4 ambiances', ambiances.length === 4],
     ['corporate', ambiances.some((l) => /Corporate/.test(l))],
     ['énergique', ambiances.some((l) => /nergique/.test(l))],
     ['luxe', ambiances.some((l) => /Luxe/.test(l))],
@@ -228,9 +230,22 @@ async function auditCatalog() {
     ['durées 5/8/15 s', durations.join() === '5 secondes,8 secondes,15 secondes'],
   ];
 
-  const wrong = expected.filter(([, ok]) => !ok).map(([label]) => label);
+  // Cohérence des enrichissements : identifiants uniques, tous documentés.
+  const coherence = [
+    ['identifiants de types uniques', new Set(data.videoTypes.map((t) => t.id)).size === data.videoTypes.length],
+    ['identifiants d’ambiances uniques', new Set(data.ambiances.map((a) => a.id)).size === data.ambiances.length],
+    ['chaque type a un libellé et une aide', data.videoTypes.every((t) => t.label && t.hint)],
+    ['chaque ambiance a un libellé et une aide', data.ambiances.every((a) => a.label && a.hint)],
+    ['« Pas de son » toujours présent en dernier', /Pas de son/.test(ambiances[ambiances.length - 1])],
+  ];
+
+  const wrong = [...required, ...coherence].filter(([, ok]) => !ok).map(([label]) => label);
   if (wrong.length) throw new Error(`catalogues incomplets : ${wrong.join(', ')}`);
-  console.log('✓ catalogues conformes (4 types · 4 ambiances · 5/8/15 s)');
+
+  console.log(
+    `✓ catalogues conformes (${videoTypes.length} types de vidéo · ${ambiances.length} ambiances · ` +
+      'durées 5/8/15 s) — toutes les entrées exigées sont présentes',
+  );
 }
 
 async function main() {

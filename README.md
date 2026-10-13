@@ -102,27 +102,57 @@ vidéos, ni les clés ne sortent de la machine.
 
 ## Les 6 champs du formulaire
 
+### Les champs du formulaire
+
 | Champ | Rôle |
 |---|---|
-| **Photo du produit** | Image source de l'animation. JPEG, PNG ou WebP, 25 Mo max. Elle est normalisée (redimensionnée à 1920 px max, ré-encodée en JPEG) avant l'envoi à Veo. Le cadrage (16:9 ou 9:16) est déduit de ses dimensions, sauf choix manuel. |
-| **Nom du produit** | Repris **mot pour mot** dans le prompt pour que Veo préserve le produit, et affiché en bandeau haut dans la vidéo (60 caractères max). |
-| **Message publicitaire** | Le texte promotionnel incrusté dans la vidéo (120 caractères max). Découpé automatiquement en lignes courtes pour rester lisible. |
-| **Type de vidéo** | Détermine la mise en scène, le mouvement et le rythme (voir ci-dessous). |
-| **Ambiance sonore** | Détermine la musique décrite à Veo, et si nécessaire la suppression de l'audio. |
-| **Durée** | 5, 8 ou 15 secondes — traduite en plan de production réel. |
+| **Photo du produit** | Image source de l'animation. JPEG, PNG ou WebP, 25 Mo max. Elle est normalisée (redimensionnée à 1920 px max, ré-encodée en JPEG) avant l'envoi au moteur. Le cadrage (16:9 ou 9:16) est déduit de ses dimensions, sauf choix manuel. |
+| **Nom du produit** | Repris **mot pour mot** dans le prompt pour que le moteur préserve le produit, et affiché en bandeau haut dans la vidéo (60 caractères max). |
+| **Message publicitaire** | Le texte promotionnel incrusté dans la vidéo (120 caractères max). Découpé automatiquement en lignes courtes pour rester lisible. Un bouton propose 5 accroches générées. |
+| **Type de vidéo** | Détermine la mise en scène, le mouvement et le rythme (11 choix, voir ci-dessous). |
+| **Ambiance sonore** | Détermine la musique décrite au moteur, et si nécessaire la suppression ou la synthèse locale de l'audio (11 choix). |
+| **Durée** | 5, 8 ou 15 secondes — traduite en plan de production réel selon le moteur. |
 
 **Options avancées** : **moteur de génération** (Veo / fal.ai / Replicate /
 rendu local), cadrage (auto / 16:9 / 9:16), définition (720p / 1080p), modèle
 Veo, et mode de rendu du texte.
 
-### Les quatre types de vidéo
+### Les onze types de vidéo
 
-| Type | Mise en scène |
+| Type | Mise en scène | Personnes |
+|---|---|---|
+| **Rotation 360° élégante** | Plateau tournant, fond studio infini, rotation continue qui révèle toutes les faces du produit. | non |
+| **Packshot publicitaire net** | Fond neutre impeccable, balayage lumineux, parallaxe subtile. Idéal pour une fiche produit. | non |
+| **Macro matière et finitions** | Très gros plans qui glissent sur les matières, coutures et finitions, faible profondeur de champ. | non |
+| **Produit en fonctionnement** | Le produit montré en train de fonctionner : mécanisme, écran qui s'allume, bouton. Une main peut intervenir. | oui |
+| **Lévitation premium** | Produit flottant dans les airs, rotation lente, particules lumineuses en orbite. | non |
+| **Stop-motion / assemblage** | Les pièces s'assemblent une à une pour former le produit complet. Très « scroll-stopping ». | non |
+| **Unboxing dramatique** | Ouverture du packaging, gros plans matière, balayage lumineux et révélation en héro shot. | oui |
+| **Avant/Après transformation** | Match cut : l'état terne devient désirable au passage d'un balayage lumineux. | non |
+| **Mise en situation lifestyle** | Décor inspirant qui vit de lui-même (vapeur, vent, lumière) ; le produit posé, sans personne. | non |
+| **Porté en mouvement (mode)** | Une personne porte le produit et marche vers la caméra, le tissu bouge naturellement. | oui |
+| **Produit en action / utilisation** | Scène de vie réelle, un adulte utilise le produit naturellement, caméra qui suit le geste. | oui |
+
+La colonne « Personnes » n'est pas indicative : elle se traduit dans le prompt.
+Pour les types sans personne, l'instruction interdit explicitement **mains,
+visages et silhouettes** — sans quoi les modèles ajoutent volontiers des
+présences parasites sur un packshot censé montrer le produit seul.
+
+### Les onze ambiances sonores
+
+| Ambiance | Style décrit au moteur |
 |---|---|
-| **Rotation 360° élégante** | Plateau tournant, fond studio infini, rotation continue et sans à-coups qui révèle toutes les faces du produit. |
-| **Produit en action / utilisation** | Scène de vie réelle, un adulte utilise le produit naturellement, caméra qui suit le geste. |
-| **Unboxing dramatique** | Ouverture du packaging, gros plans matière, balayage lumineux et révélation finale en héro shot. |
-| **Avant/Après transformation** | Match cut : l'état terne devient désirable au passage d'un balayage lumineux. |
+| **Corporate professionnel** | Nappe propre, piano chaud, tempo posé. |
+| **Énergique et fun** | Pop entraînante, beat marqué, claps. |
+| **Luxe et élégant** | Cordes soyeuses, nappe raffinée, tempo lent. |
+| **Cinématique épique** | Cordes montantes, impacts profonds, souffle de bande-annonce. |
+| **Minimaliste moderne** | Texture épurée, pulsation discrète, esprit design et tech. |
+| **Chaleureux et artisanal** | Acoustique, guitare douce, esprit fait main. |
+| **Urbain / streetwear** | Beat hip-hop, basse 808, attitude street. |
+| **Tendance réseaux sociaux** | Hook accrocheur, rythme serré, pensé pour Reels et TikTok. |
+| **Tension dramatique** | Montée de tension puis impact final — parfait avec un unboxing. |
+| **Naturel et apaisant** | Souffle d'air, oiseaux lointains, nappe douce. Cosmétique et bien-être. |
+| **Pas de son** | Silence total demandé, **et** piste audio supprimée en post-production. |
 
 ---
 
@@ -261,9 +291,7 @@ est garantie par la post-production :
 
 | Ambiance | Prompt envoyé au moteur (si audio natif) | Post-production |
 |---|---|---|
-| **Corporate professionnel** | Nappe propre, piano chaud, tempo posé, whoosh discret aux transitions. | — |
-| **Énergique et fun** | Pop entraînante, beat marqué, claps, hook synthétique. | — |
-| **Luxe et élégant** | Cordes soyeuses, nappe raffinée, shimmer, tempo lent. | — |
+| Les 10 ambiances sonores | Décrit au moteur : style, instrumentation, tempo. | — |
 | **Pas de son** | Silence total demandé dans le prompt. | **Piste audio supprimée** (`-an`) : la vidéo est réellement muette, quoi que produise le moteur. |
 
 Chaque prompt précise « instrumental seulement : ni dialogue, ni voix off, ni
@@ -396,6 +424,7 @@ node scripts/smoke-test.mjs --duration 5 --vertical --ambiance luxe --videoType 
 node scripts/smoke-test.mjs --veo               # vrai appel Veo (payant, consomme du quota)
 
 node scripts/check-providers.mjs                # vérifie les 3 adaptateurs SANS clé
+node scripts/check-catalog.mjs                  # vérifie les 11 types × 11 ambiances
 node scripts/probe-key.mjs                      # ce que votre clé Gemini peut réellement appeler
 ```
 
@@ -408,13 +437,21 @@ node scripts/probe-key.mjs                      # ce que votre clé Gemini peut 
    piste audio**, disponibilité du poster, et **lecture partielle HTTP 206**
    (indispensable pour que le lecteur puisse se déplacer dans la timeline) ;
 5. vérifie la **cohérence des identifiants DOM** entre `index.html` et `app.js` ;
-6. vérifie que les **catalogues** contiennent bien les 4 types de vidéo, les
-   4 ambiances et les durées 5/8/15 s ;
+6. vérifie que les **catalogues** contiennent toujours les entrées exigées par le
+   cahier des charges (rotation 360°, action, unboxing, avant/après ; corporate,
+   énergique, luxe, pas de son ; 5/8/15 s), sans figer leur nombre — le
+   catalogue est destiné à s'enrichir, mais rien d'exigé ne doit disparaître ;
 7. fabrique un clip muet et contrôle l'ajout de la **nappe sonore locale**
    (chemin utilisé par fal.ai et Replicate, qu'on ne peut pas tester sans clé).
 
 Il est **gratuit et déterministe** : il n'appelle jamais de moteur distant, même
 quand des clés sont configurées.
+
+**`check-catalog.mjs`** construit le prompt réel des **11 types × 11 ambiances**
+et vérifie qu'il est cohérent : fidélité produit présente, contrainte de
+présence humaine respectée (interdiction explicite des mains et silhouettes pour
+les types « produit seul »), et bloc audio présent ou retiré selon que le moteur
+sait produire du son. Il affiche aussi un prompt complet, pour contrôle visuel.
 
 **`check-providers.mjs`** est le test le plus utile quand on ajoute un moteur :
 il calcule les plans pour 5, 8 et 15 s, puis affiche la **requête exacte qui
@@ -447,6 +484,7 @@ public/
 scripts/
   smoke-test.mjs       test de bout en bout (gratuit)
   check-providers.mjs  vérifie les adaptateurs sans clé
+  check-catalog.mjs    vérifie les 11 types × 11 ambiances
   probe-key.mjs        ce que la clé Gemini peut réellement appeler
 ```
 

@@ -58,10 +58,32 @@ const textBlock = (textMode, productName, adMessage) => {
 /** Bloc audio : ne s'adresse qu'aux modeles a audio natif. */
 const audioBlock = (ambiance, nativeAudio = true) => (nativeAudio ? ambiance.prompt : null);
 
+/**
+ * Consigne de presence humaine.
+ *
+ * `needsPerson: false` interdit explicitement toute personne : sans cela, un
+ * modele ajoute volontiers des mains ou des silhouettes parasites sur un
+ * packshot cense montrer le produit seul.
+ */
+const peopleBlock = (needsPerson) =>
+  needsPerson
+    ? 'People may appear, but only as described: adults, natural and believable, never ' +
+      'looking at the camera unless specified.'
+    : 'No people anywhere in the frame: no hands, no faces, no arms, no body parts, no silhouettes. ' +
+      'The product is the only subject of the shot.';
+
+/**
+ * Article anglais correct devant un nombre de secondes.
+ * « an 8 second clip », « a 5 second clip » — 8, 11 et 18 commencent par un
+ * son voyelle.
+ */
+const article = (seconds) => (['8', '11', '18'].includes(String(seconds)) ? 'an' : 'a');
+
 /** Bloc technique : duree, cadrage, qualite, interdits. */
 const technicalBlock = ({ durationSeconds, aspectRatio, resolution, extend }) =>
   [
-    `The clip is a ${durationSeconds} second ${aspectRatio} vertical-or-landscape commercial shot at ${resolution}.`,
+    `The clip is ${article(durationSeconds)} ${durationSeconds} second ${aspectRatio} ` +
+      `vertical-or-landscape commercial shot at ${resolution}.`,
     extend
       ? 'This is the first part of a longer advert: it must end in a state that can be ' +
         'continued naturally and seamlessly in a following shot.'
@@ -104,6 +126,7 @@ export function buildMainPrompt(input) {
     videoType.scene,
     productFidelity(productName),
     videoType.motion,
+    peopleBlock(videoType.needsPerson),
     textBlock(textMode.id, productName, adMessage),
     audioBlock(ambiance, input.nativeAudio !== false),
     technicalBlock({
@@ -132,6 +155,7 @@ export function buildExtensionPrompt(input) {
       'scene and do not restart the action.',
     videoType.motion,
     productFidelity(oneLine(input.productName)),
+    peopleBlock(videoType.needsPerson),
     textBlock(textMode.id, oneLine(input.productName), oneLine(input.adMessage)),
     audioBlock(ambiance, input.nativeAudio !== false),
     'The continuation lasts 7 seconds and must flow naturally out of the last frame of the ' +

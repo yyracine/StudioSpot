@@ -21,10 +21,15 @@ export const HOST = process.env.HOST || '127.0.0.1';
 /* ------------------------------------------------------------------ *
  * Types de video
  * ------------------------------------------------------------------ *
- * `scene`      : description du sujet / de l'action confiee a Veo.
+ * `scene`      : description du sujet / de l'action confiee au moteur.
  * `motion`     : consignes de mouvement et de camera (animation fluide).
- * `needsPerson`: si vrai, on autorise la generation de personnes adultes
- *                (obligatoire et suffisant pour l'image-to-video Veo 3.x).
+ * `needsPerson`: le cadre doit-il contenir des personnes ?
+ *                true  -> on autorise explicitement des adultes ;
+ *                false -> on interdit toute presence humaine (mains, visages,
+ *                         membres), ce qui evite qu'un modele ajoute des
+ *                         silhouettes parasites sur un packshot produit.
+ * `fallbackAd`: accroche utilisee par le repli hors ligne des suggestions,
+ *               pour rester coherent avec la mise en scene choisie.
  */
 export const VIDEO_TYPES = [
   {
@@ -39,20 +44,80 @@ export const VIDEO_TYPES = [
       'every side of the product. Elegant, unhurried, premium pacing. The silhouette stays razor ' +
       'sharp and the geometry of the product never distorts while it turns.',
     needsPerson: false,
+    fallbackAd: (name) => `${name}, sous tous les angles`,
   },
   {
-    id: 'action',
-    label: "Produit en action / utilisation",
-    hint: 'Le produit est utilisé naturellement dans un contexte de vie réel.',
+    id: 'packshot',
+    label: 'Packshot publicitaire net',
+    hint: 'Fond neutre, balayage lumineux, produit impeccable. Idéal pour une fiche produit.',
     scene:
-      'A real-life lifestyle scene where the product is being used naturally by a young adult, ' +
-      'in a bright modern interior with tasteful, uncluttered styling and shallow depth of field.',
+      'A flawless e-commerce packshot on a seamless neutral studio cyclorama, the product centred ' +
+      'on a glossy surface with a soft reflected echo beneath it, clean and controlled commercial ' +
+      'lighting with no props and no clutter.',
     motion:
-      'Natural, believable human movement: the hands and the person interact with the product the ' +
-      'way a real customer would. The camera follows the gesture with a slow, confident push-in, ' +
-      'then a gentle parallax drift. The product always stays the visual hero of the frame, ' +
-      'perfectly readable, with a premium commercial finish.',
+      'Almost still: the product stays perfectly crisp and motionless while a single soft light sweep ' +
+      'travels slowly across its surface, revealing the finish and the material. A very slight camera ' +
+      'parallax gives depth. Sober, precise, catalogue quality.',
+    needsPerson: false,
+    fallbackAd: (name) => `${name} — la qualité en un regard`,
+  },
+  {
+    id: 'macro',
+    label: 'Macro matière et finitions',
+    hint: 'Très gros plans sur les matières, coutures et finitions. Effet haut de gamme.',
+    scene:
+      'Extreme macro cinematography over the product: the weave of the fabric, the stitching, the ' +
+      'grain of the leather, brushed metal, a polished glass edge, all with a very shallow depth of ' +
+      'field and beautiful optical bokeh.',
+    motion:
+      'The camera glides very slowly along the surface, closer than the eye can see, with slow rack ' +
+      'focus travelling from one detail to the next. Tiny specular highlights slide over the material ' +
+      'as the lens moves. Tactile, luxurious, hypnotic.',
+    needsPerson: false,
+    fallbackAd: (name) => `Chaque détail compte`,
+  },
+  {
+    id: 'fonctionnement',
+    label: 'Produit en fonctionnement',
+    hint: 'Le produit est montré en train de fonctionner : mécanisme, écran, bouton.',
+    scene:
+      'A clean demonstration desk where the product is shown working: a lid sliding open, a mechanism ' +
+      'unfolding, a screen waking up, a dial turning. A single adult hand may enter the frame to ' +
+      'operate it. Bright, functional, easy to read.',
+    motion:
+      'Precise and informative: a tight push-in shows the exact moment the product does what it is ' +
+      'made for, then holds on the satisfying result. Clear mechanical motion, no confusion about ' +
+      'what is happening, confident commercial pacing.',
     needsPerson: true,
+    fallbackAd: (name) => `Voyez ${name} à l’œuvre`,
+  },
+  {
+    id: 'levitation',
+    label: 'Lévitation premium',
+    hint: 'Le produit flotte dans les airs, rotation lente, particules.',
+    scene:
+      'The product floats weightless in mid-air against a deep gradient backdrop, surrounded by fine ' +
+      'floating particles and soft bokeh specks of light that catch the glow.',
+    motion:
+      'The product hovers, drifting almost imperceptibly up and down while rotating slowly on itself. ' +
+      'Particles orbit gently around it and the camera performs a slow arc. Hypnotic, weightless, ' +
+      'high-end tech advertising feel.',
+    needsPerson: false,
+    fallbackAd: (name) => `${name}, la légèreté en plus`,
+  },
+  {
+    id: 'stopMotion',
+    label: 'Stop-motion / assemblage',
+    hint: 'Les éléments se rassemblent pour former le produit. Effet satisfaisant.',
+    scene:
+      'A clean studio surface where the product, its accessories and its packaging are laid out ' +
+      'separately, as an exploded view ready to come together.',
+    motion:
+      'A satisfying stop-motion build: each piece slides and snaps into place one after another with ' +
+      'small tactile impacts, progressively assembling the complete product, ending on the finished ' +
+      'object. Playful, crisp, rhythmic, very scroll-stopping.',
+    needsPerson: false,
+    fallbackAd: (name) => `Tout est inclus`,
   },
   {
     id: 'unboxing',
@@ -66,6 +131,7 @@ export const VIDEO_TYPES = [
       'tissue unfolding, then a light sweep that grazes the surface and reveals the product in all ' +
       'its detail. Slow-motion feel, confident and suspenseful, ending on a hero shot of the product.',
     needsPerson: true,
+    fallbackAd: (name) => `Découvrez ${name} en 15 secondes`,
   },
   {
     id: 'beforeAfter',
@@ -81,19 +147,69 @@ export const VIDEO_TYPES = [
       'satisfying and perfectly aligned, with a crisp modern advertising rhythm, then a short hero hold ' +
       'on the transformed result.',
     needsPerson: false,
+    fallbackAd: (name) => `Avant, après : la différence ${name}`,
+  },
+  {
+    id: 'lifestyle',
+    label: 'Mise en situation lifestyle',
+    hint: 'Le produit posé dans un décor inspirant, sans personne. Ambiance naturelle.',
+    scene:
+      'An aspirational real-world setting chosen to match the product — a sunlit café table, a ' +
+      'designer interior, a rooftop at golden hour — styled tastefully and populated only by natural ' +
+      'ambience: plants, steam, light, texture.',
+    motion:
+      'A slow cinematic dolly moves through the scene while the environment lives on its own: steam ' +
+      'rising, leaves swaying in a breeze, light shifting across the surface. The product rests as the ' +
+      'undisputed hero of the frame. Calm, editorial, desirable.',
+    needsPerson: false,
+    fallbackAd: (name) => `${name} dans votre quotidien`,
+  },
+  {
+    id: 'defile',
+    label: 'Porté en mouvement (mode)',
+    hint: 'Une personne porte le produit et marche : idéal pour les vêtements.',
+    scene:
+      'A fashion-film scene — a clean runway or an urban street — where a young adult wears the ' +
+      'product and walks confidently toward the camera, the garment moving naturally with every step.',
+    motion:
+      'A confident walk with the fabric flowing and catching the light, the camera tracking backwards ' +
+      'to keep the product as the focus, then a brief confident pose to close. Dynamic, elegant, ' +
+      'editorial fashion energy.',
+    needsPerson: true,
+    fallbackAd: (name) => `Portez ${name} avec confiance`,
+  },
+  {
+    id: 'action',
+    label: 'Produit en action / utilisation',
+    hint: 'Le produit est utilisé naturellement dans un contexte de vie réel.',
+    scene:
+      'A real-life lifestyle scene where the product is being used naturally by a young adult, ' +
+      'in a bright modern interior with tasteful, uncluttered styling and shallow depth of field.',
+    motion:
+      'Natural, believable human movement: the hands and the person interact with the product the ' +
+      'way a real customer would. The camera follows the gesture with a slow, confident push-in, ' +
+      'then a gentle parallax drift. The product always stays the visual hero of the frame, ' +
+      'perfectly readable, with a premium commercial finish.',
+    needsPerson: true,
+    fallbackAd: (name) => `Adoptez ${name} au quotidien`,
   },
 ];
 
 /* ------------------------------------------------------------------ *
  * Ambiances sonores
  * ------------------------------------------------------------------ *
- * L'audio de Veo 3.x est TOUJOURS actif : il se pilote uniquement par le
- * prompt. Pour l'option "Pas de son", on demande le silence dans le prompt
- * ET on supprime la piste audio en post-production (assurance totale).
+ * Pour les moteurs a audio natif (Veo), `prompt` decrit la musique au
+ * modele. Pour les autres (fal, Replicate) ce bloc est retire du prompt :
+ * une nappe locale est synthetisee par ffmpeg a partir de `demo`, faute de
+ * quoi l'ambiance choisie serait purement ignoree.
  *
- * `demoTone` sert au mode demo local (sans cle API) : un accord synthetise
- * par ffmpeg pour illustrer la place de la bande son.
+ * `demo` : accord synthetise (frequences, pulsation, profondeur, volume).
+ *          C'est une nappe d'accompagnement, pas une reproduction fidele du
+ *          style decrit.
+ * `mute` : l'option "Pas de son" supprime la piste audio en post-production.
  */
+const INSTRUMENTAL = 'Instrumental only: no dialogue, no voice-over, no lyrics, no singing.';
+
 export const AMBIANCES = [
   {
     id: 'corporate',
@@ -101,8 +217,7 @@ export const AMBIANCES = [
     hint: 'Nappe propre, piano doux, tempo posé.',
     prompt:
       'Audio: clean corporate background music, warm piano chords over soft synth pads, a calm and ' +
-      'confident tempo, discreet whoosh on the transitions. Instrumental only: no dialogue, no ' +
-      'voice-over, no lyrics, no singing.',
+      `confident tempo, discreet whoosh on the transitions. ${INSTRUMENTAL}`,
     demo: { freqs: [220, 261.63, 329.63], tremoloHz: 0.6, tremoloDepth: 0.12, volume: 0.16 },
   },
   {
@@ -111,8 +226,7 @@ export const AMBIANCES = [
     hint: 'Beat marqué, percussions punchy, dynamique.',
     prompt:
       'Audio: upbeat energetic pop track with a driving punchy beat, crisp claps and a bright synth ' +
-      'hook, fun, dynamic and youthful. Instrumental only: no dialogue, no voice-over, no lyrics, ' +
-      'no singing.',
+      `hook, fun, dynamic and youthful. ${INSTRUMENTAL}`,
     demo: { freqs: [293.66, 369.99, 440], tremoloHz: 2.4, tremoloDepth: 0.45, volume: 0.2 },
   },
   {
@@ -121,9 +235,71 @@ export const AMBIANCES = [
     hint: 'Cordes soyeuses, nappe raffinée, tempo lent.',
     prompt:
       'Audio: elegant and luxurious soundtrack, soft orchestral strings blended with a refined ambient ' +
-      'pad and a subtle shimmer, slow and sophisticated tempo, spacious and expensive sounding. ' +
-      'Instrumental only: no dialogue, no voice-over, no lyrics, no singing.',
+      `pad and a subtle shimmer, slow and sophisticated tempo, spacious and expensive sounding. ${INSTRUMENTAL}`,
     demo: { freqs: [440, 554.37, 659.25], tremoloHz: 0.4, tremoloDepth: 0.15, volume: 0.14 },
+  },
+  {
+    id: 'cinematique',
+    label: 'Cinématique épique',
+    hint: 'Cordes montantes, impacts profonds, souffle de bande-annonce.',
+    prompt:
+      'Audio: epic cinematic trailer music, rising orchestral strings, deep braams and sub hits, a slow ' +
+      `powerful build with a satisfying impact on the reveal, awe-inspiring and bold. ${INSTRUMENTAL}`,
+    demo: { freqs: [110, 164.81, 220], tremoloHz: 0.3, tremoloDepth: 0.22, volume: 0.18 },
+  },
+  {
+    id: 'minimaliste',
+    label: 'Minimaliste moderne',
+    hint: 'Texture épurée, pulsation discrète, esprit design et tech.',
+    prompt:
+      'Audio: minimal modern electronic texture, sparse clean synth notes, a soft steady pulse, plenty ' +
+      `of space and restraint, precise and design-oriented. ${INSTRUMENTAL}`,
+    demo: { freqs: [261.63, 392, 523.25], tremoloHz: 1.2, tremoloDepth: 0.2, volume: 0.12 },
+  },
+  {
+    id: 'chaleureux',
+    label: 'Chaleureux et artisanal',
+    hint: 'Acoustique, guitare douce, esprit fait main.',
+    prompt:
+      'Audio: warm acoustic folk, gently fingerpicked guitar with soft brushed percussion, an intimate ' +
+      `handcrafted and authentic feel. ${INSTRUMENTAL}`,
+    demo: { freqs: [196, 246.94, 293.66], tremoloHz: 0.8, tremoloDepth: 0.15, volume: 0.15 },
+  },
+  {
+    id: 'urbain',
+    label: 'Urbain / streetwear',
+    hint: 'Beat hip-hop, basse ronde, attitude street.',
+    prompt:
+      'Audio: confident hip-hop beat with a deep 808 bass, crisp hi-hats and a laid-back urban groove, ' +
+      `streetwear energy, cool and self-assured. ${INSTRUMENTAL}`,
+    demo: { freqs: [82.41, 110, 164.81], tremoloHz: 1.8, tremoloDepth: 0.35, volume: 0.2 },
+  },
+  {
+    id: 'tendances',
+    label: 'Tendance réseaux sociaux',
+    hint: 'Hook accrocheur, rythme serré, pensé pour Reels et TikTok.',
+    prompt:
+      'Audio: catchy viral pop hook, tight upbeat percussion with snappy claps and a bright synth lead, ' +
+      `immediate and made for short-form social video. ${INSTRUMENTAL}`,
+    demo: { freqs: [349.23, 440, 523.25], tremoloHz: 2.8, tremoloDepth: 0.4, volume: 0.18 },
+  },
+  {
+    id: 'dramatique',
+    label: 'Tension dramatique',
+    hint: 'Montée de tension, impact final. Parfait pour un unboxing.',
+    prompt:
+      'Audio: tense dramatic build-up, a low pulsing drone that rises slowly in suspense, then one deep ' +
+      `impact at the exact moment of the reveal. ${INSTRUMENTAL}`,
+    demo: { freqs: [98, 116.54, 146.83], tremoloHz: 0.5, tremoloDepth: 0.25, volume: 0.17 },
+  },
+  {
+    id: 'naturel',
+    label: 'Naturel et apaisant',
+    hint: 'Souffle d’air, oiseaux lointains, nappe douce. Cosmétique, bien-être.',
+    prompt:
+      'Audio: calm natural ambience, soft wind and distant birdsong blended with a warm gentle pad, ' +
+      `soothing and organic, wellness and skincare feel. ${INSTRUMENTAL}`,
+    demo: { freqs: [174.61, 220, 261.63], tremoloHz: 0.25, tremoloDepth: 0.1, volume: 0.11 },
   },
   {
     id: 'aucun',
