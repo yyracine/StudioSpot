@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Animateur de Photos Produit — vidéo publicitaire par Veo</title>
+    <meta
+      name="description"
+      content="Transformez une photo de produit en vidéo publicitaire animée avec Veo : rotation 360°, unboxing, avant/après, texte promotionnel intégré et ambiance sonore."
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23FFC46B'/%3E%3Cpath d='M12 9l11 7-11 7z' fill='%230B0B0F'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <div class="aurora" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+            <path d="M8 5.5l11 6.5-11 6.5z" />
+          </svg>
+        </span>
+        <div class="brand-text">
+          <h1>Animateur de Photos Produit</h1>
+          <p>Une photo statique devient une vidéo publicitaire, grâce à Veo.</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span class="badge" id="modeBadge" title="État de la connexion Veo">
+          <span class="dot"></span><span id="modeBadgeText">Connexion…</span>
+        </span>
+        <button type="button" class="ghost-btn" id="settingsBtn">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="3.2" />
+            <path d="M12 3v2.2M12 18.8V21M4.2 7.5l1.9 1.1M17.9 15.4l1.9 1.1M4.2 16.5l1.9-1.1M17.9 8.6l1.9-1.1" />
+          </svg>
+          Réglages
+        </button>
+      </div>
+    </header>
+
+    <div class="banner" id="healthBanner" hidden></div>
+
+    <main class="studio">
+      <!-- ============================ FORMULAIRE ============================ -->
+      <section class="panel form-panel">
+        <form id="productForm" novalidate>
+          <!-- 1. Photo -->
+          <div class="field-group">
+            <div class="group-head">
+              <span class="step">1</span>
+              <div>
+                <h2>Photo du produit</h2>
+                <p class="group-hint">Vêtement, objet, tech… une seule photo, bien éclairée et centrée.</p>
+              </div>
+            </div>
+
+            <div
+              class="dropzone"
+              id="dropzone"
+              tabindex="0"
+              role="button"
+              aria-label="Déposer ou choisir une photo de produit"
+            >
+              <input type="file" id="photoInput" accept="image/jpeg,image/png,image/webp" hidden />
+
+              <div class="dropzone-empty" id="dropzoneEmpty">
+                <span class="drop-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <rect x="3" y="4" width="18" height="16" rx="3" />
+                    <circle cx="8.5" cy="9.5" r="1.6" />
+                    <path d="M4 17l4.6-4.6a1.7 1.7 0 012.4 0L15 16" />
+                    <path d="M14.5 14.2l1.9-1.9a1.7 1.7 0 012.4 0L21 14.5" />
+                  </svg>
+                </span>
+                <strong>Glissez votre photo ici</strong>
+                <span class="muted">ou cliquez pour parcourir · collage Ctrl+V accepté</span>
+                <span class="muted small" id="uploadLimits"></span>
+              </div>
+
+              <div class="dropzone-preview" id="dropzonePreview" hidden>
+                <img id="photoThumb" alt="Aperçu de la photo du produit" />
+                <div class="photo-meta">
+                  <strong id="photoName"></strong>
+                  <span class="muted small" id="photoDims"></span>
+                </div>
+                <button type="button" class="ghost-btn small" id="changePhotoBtn">Changer</button>
+              </div>
+            </div>
+            <p class="error-text" id="photoError" hidden></p>
+          </div>
+
+          <!-- 2. Nom + message -->
+          <div class="field-group">
+            <div class="group-head">
+              <span class="step">2</span>
+              <div>
+                <h2>Le produit et son message</h2>
+                <p class="group-hint">Ces informations guident l'animation et l'habillage de la vidéo.</p>
+              </div>
+            </div>
+
+            <label class="field">
+              <span class="field-label">Nom du produit</span>
+              <input
+                type="text"
+                id="productName"
+                name="productName"
+                placeholder="Sneakers Aero Runner"
+                autocomplete="off"
+                maxlength="60"
+                required
+              />
+              <span class="counter"><span id="productNameCount">0</span>/60</span>
+            </label>
+
+            <label class="field">
+              <span class="field-label">Message publicitaire</span>
+              <textarea
+                id="adMessage"
+                name="adMessage"
+                rows="2"
+                placeholder="Nouveau ! -30% cette semaine"
+                maxlength="120"
+              ></textarea>
+              <span class="counter"><span id="adMessageCount">0</span>/120</span>
+            </label>
+
+            <div class="chips" id="messageSuggestions" aria-label="Suggestions de message">
+              <button type="button" class="chip">Nouveau ! -30% cette semaine</button>
+              <button type="button" class="chip">Livraison offerte dès 40 €</button>
+              <button type="button" class="chip">Édition limitée — stock réduit</button>
+              <button type="button" class="chip">Note 4,9/5 · 2 300 avis</button>
+            </div>
+          </div>
+
+          <!-- 3. Mise en scene -->
+          <div class="field-group">
+            <div class="group-head">
+              <span class="step">3</span>
+              <div>
+                <h2>Mise en scène</h2>
+                <p class="group-hint">Le style d'animation, la bande son et la durée.</p>
+              </div>
+            </div>
+
+            <div class="grid-2">
+              <label class="field">
+                <span class="field-label">Type de vidéo</span>
+                <select id="videoType" name="videoType"></select>
+                <span class="field-hint" id="videoTypeHint"></span>
+              </label>
+
+              <label class="field">
+                <span class="field-label">Ambiance sonore</span>
+                <select id="ambiance" name="ambiance"></select>
+                <span class="field-hint" id="ambianceHint"></span>
+              </label>
+
+              <label class="field">
+                <span class="field-label">Durée</span>
+                <select id="duration" name="duration"></select>
+                <span class="field-hint" id="durationHint"></span>
+              </label>
+
+              <div class="field plan-box">
+                <span class="field-label">Production prévue</span>
+                <p id="planSummary" class="plan-summary">—</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. Options avancees -->
+          <details class="advanced">
+            <summary>
+              Options avancées
+              <span class="muted small">cadrage, modèle Veo, typographie</span>
+            </summary>
+
+            <div class="grid-2">
+              <label class="field">
+                <span class="field-label">Cadrage</span>
+                <select id="aspectRatio" name="aspectRatio"></select>
+                <span class="field-hint" id="aspectRatioHint"></span>
+              </label>
+
+              <label class="field">
+                <span class="field-label">Définition</span>
+                <select id="resolution" name="resolution"></select>
+                <span class="field-hint" id="resolutionHint"></span>
+              </label>
+
+              <label class="field">
+                <span class="field-label">Modèle Veo</span>
+                <select id="model" name="model"></select>
+                <span class="field-hint" id="modelHint"></span>
+              </label>
+
+              <label class="field">
+                <span class="field-label">Texte promotionnel</span>
+                <select id="textMode" name="textMode"></select>
+                <span class="field-hint" id="textModeHint"></span>
+              </label>
+            </div>
+          </details>
+
+          <div class="cta-zone">
+            <button type="submit" class="cta" id="generateBtn" disabled>Animer mon produit</button>
+            <p class="estimate" id="estimate"></p>
+          </div>
+        </form>
+      </section>
+
+      <!-- ============================== SCÈNE ============================== -->
+      <section class="panel stage-panel">
+        <div class="stage-head">
+          <div>
+            <h2 id="stageTitle">Aperçu</h2>
+            <p class="muted small" id="stageSubtitle">
+              L'habillage ci-dessous est exactement celui incrusté dans la vidéo.
+            </p>
+          </div>
+          <div class="stage-tools">
+            <span class="badge subtle" id="stageRatioBadge">16:9</span>
+          </div>
+        </div>
+
+        <!-- Aperçu photo + habillage / lecteur vidéo -->
+        <div class="stage-frame">
+          <div class="stage-media" id="stageMedia">
+            <img id="stagePhoto" alt="" hidden />
+            <div class="overlay-preview" id="overlayPreview" hidden aria-hidden="true">
+              <div class="ov-name" id="ovName"></div>
+              <div class="ov-message" id="ovMessage"></div>
+            </div>
+            <video id="resultVideo" controls playsinline preload="metadata" hidden></video>
+          </div>
+
+          <div class="stage-placeholder" id="stagePlaceholder">
+            <span class="ph-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.4">
+                <rect x="2.5" y="5" width="19" height="14" rx="3" />
+                <path d="M10 9.5l5 2.5-5 2.5z" fill="currentColor" stroke="none" />
+              </svg>
+            </span>
+            <strong>Votre vidéo apparaîtra ici</strong>
+            <span class="muted small">
+              Ajoutez une photo, renseignez le nom du produit et le message, puis lancez l'animation.
+            </span>
+          </div>
+        </div>
+
+        <!-- Progression -->
+        <div class="progress-zone" id="progressZone" hidden>
+          <div class="progress-top">
+            <span class="spinner" aria-hidden="true"></span>
+            <strong id="progressLabel">Préparation…</strong>
+            <span class="progress-pct" id="progressPct">0 %</span>
+          </div>
+          <div class="bar"><div class="bar-fill" id="barFill"></div></div>
+          <p class="muted small" id="progressDetail">
+            Veo peut mettre de 1 à 6 minutes selon la charge des serveurs.
+          </p>
+          <details class="console-wrap">
+            <summary>Journal de production</summary>
+            <pre class="console" id="console"></pre>
+          </details>
+        </div>
+
+        <!-- Resultat -->
+        <div class="result-zone" id="resultZone" hidden>
+          <div class="result-head">
+            <strong id="resultTitle">Vidéo prête</strong>
+            <span class="badge success" id="resultMode">Veo</span>
+          </div>
+          <div class="meta-grid" id="resultMeta"></div>
+          <div class="result-actions">
+            <a class="cta small" id="downloadBtn" download>Télécharger le MP4</a>
+            <button type="button" class="ghost-btn" id="regenerateBtn">Régénérer</button>
+            <button type="button" class="ghost-btn" id="newBtn">Nouveau produit</button>
+          </div>
+          <details class="prompt-wrap">
+            <summary>Prompt envoyé à Veo</summary>
+            <pre class="console prompt" id="promptOut"></pre>
+            <button type="button" class="ghost-btn small" id="copyPromptBtn">Copier le prompt</button>
+          </details>
+        </div>
+
+        <!-- Erreur -->
+        <div class="error-zone" id="errorZone" hidden>
+          <strong id="errorTitle">La production a échoué</strong>
+          <p id="errorMessage"></p>
+          <p class="muted small" id="errorHint" hidden></p>
+          <details id="errorDetailsWrap" hidden>
+            <summary>Détails techniques</summary>
+            <pre class="console" id="errorDetails"></pre>
+          </details>
+          <button type="button" class="ghost-btn" id="retryBtn">Réessayer</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- ============================== RÉGLAGES ============================== -->
+    <dialog id="settingsDialog" class="dialog">
+      <form method="dialog" class="dialog-inner">
+        <h2>Réglages</h2>
+
+        <div class="field">
+          <span class="field-label">Clé API Gemini</span>
+          <input type="password" id="apiKeyInput" placeholder="AIza…" autocomplete="off" spellcheck="false" />
+          <span class="field-hint">
+            Nécessaire pour Veo. Créez une clé sur
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>.
+            La clé reste sur ce serveur (fichier <code>.env</code>) et n'est jamais renvoyée au navigateur.
+          </span>
+        </div>
+
+        <p class="muted small" id="settingsStatus"></p>
+
+        <div class="dialog-actions">
+          <button type="button" class="ghost-btn" id="clearKeyBtn">Retirer la clé</button>
+          <span class="spacer"></span>
+          <button type="button" class="ghost-btn" id="closeSettingsBtn">Fermer</button>
+          <button type="button" class="cta small" id="saveKeyBtn">Enregistrer</button>
+        </div>
+
+        <div class="diag" id="diagBox"></div>
+      </form>
+    </dialog>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

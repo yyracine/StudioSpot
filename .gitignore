@@ -1,0 +1,16 @@
+# Dépendances
+node_modules/
+
+# Secrets — ne jamais versionner la clé API
+.env
+
+# Fichiers produits à l'exécution
+uploads/
+outputs/
+.npm-cache/
+
+# Divers
+*.log
+.DS_Store
+Thumbs.db
+.research/
