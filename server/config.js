@@ -138,45 +138,22 @@ export const AMBIANCES = [
 ];
 
 /* ------------------------------------------------------------------ *
- * Durees
+ * Durees proposees
  * ------------------------------------------------------------------ *
- * L'API Veo 3.x n'accepte que 4, 6 ou 8 secondes. On traduit donc la duree
- * demandee par le client en un plan de production reel :
+ * Ce sont les durees DEMANDEES par le client (5, 8 ou 15 s). Leur traduction
+ * en production reelle depend du fournisseur choisi : c'est le « plan » de
+ * chaque fournisseur qui la calcule (server/providers/*.js), car les modeles
+ * n'acceptent ni les memes durees ni les memes extensions.
  *
- *  5 s  -> generation de 6 s, puis coupe precise a 5,0 s (ffmpeg)
- *  8 s  -> generation native de 8 s
- * 15 s  -> generation de 8 s + extension Veo (+7 s) = exactement 15 s
- *
- * L'extension Veo exige 8 s, du 720p, et un ratio 16:9 ou 9:16.
+ * Exemples :
+ *   Veo        5 s -> 6 s generees puis coupees a 5,00 s ;
+ *              15 s -> 8 s + extension de 7 s.
+ *   fal/Replic. la duree est plafonnee a ce que le modele sait produire.
  */
 export const DURATIONS = [
-  {
-    id: '5',
-    label: '5 secondes',
-    seconds: 5,
-    veoDurationSeconds: 6,
-    trimTo: 5,
-    extend: false,
-    note: 'Généré en 6 s puis coupé à 5,0 s.',
-  },
-  {
-    id: '8',
-    label: '8 secondes',
-    seconds: 8,
-    veoDurationSeconds: 8,
-    trimTo: null,
-    extend: false,
-    note: 'Durée native du modèle Veo.',
-  },
-  {
-    id: '15',
-    label: '15 secondes',
-    seconds: 15,
-    veoDurationSeconds: 8,
-    trimTo: null,
-    extend: true,
-    note: '8 s générées puis étendues de 7 s (2 appels Veo).',
-  },
+  { id: '5', label: '5 secondes', seconds: 5 },
+  { id: '8', label: '8 secondes', seconds: 8 },
+  { id: '15', label: '15 secondes', seconds: 15 },
 ];
 
 /* ------------------------------------------------------------------ *
@@ -241,18 +218,54 @@ export const LIMITS = {
 export const JOB_RETENTION = 40;
 
 /* ------------------------------------------------------------------ *
- * Cle API (modifiable a chaud depuis l'interface)
- * ------------------------------------------------------------------ */
-let runtimeApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
-
-export const getApiKey = () => runtimeApiKey;
-export const setApiKey = (key) => {
-  runtimeApiKey = String(key || '').trim();
-  return runtimeApiKey;
+ * Cles API des fournisseurs (modifiables a chaud depuis l'interface)
+ * ------------------------------------------------------------------ *
+ * Chaque fournisseur declare son propre emplacement de cle, ce qui permet
+ * d'en avoir plusieurs configurees et de basculer de l'un a l'autre.
+ */
+export const KEY_SOURCES = {
+  gemini: {
+    label: 'Clé API Gemini (Google AI Studio)',
+    envVars: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
+    docsUrl: 'https://aistudio.google.com/apikey',
+    placeholder: 'AIza… ou AQ.…',
+  },
+  fal: {
+    label: 'Clé API fal.ai',
+    envVars: ['FAL_KEY', 'FAL_API_KEY'],
+    docsUrl: 'https://fal.ai/dashboard/keys',
+    placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:xxxxxxxx…',
+  },
+  replicate: {
+    label: 'Jeton API Replicate',
+    envVars: ['REPLICATE_API_TOKEN'],
+    docsUrl: 'https://replicate.com/account/api-tokens',
+    placeholder: 'r8_…',
+  },
 };
-export const hasApiKey = () => runtimeApiKey.length > 0;
 
-/** Mode force par variable d'environnement (DEMO=1 => jamais d'appel Veo). */
+/** Cles en memoire, initialisees depuis l'environnement. */
+const runtimeKeys = Object.fromEntries(
+  Object.entries(KEY_SOURCES).map(([id, source]) => [
+    id,
+    source.envVars.map((name) => process.env[name]).find((value) => value && value.trim()) || '',
+  ]),
+);
+
+export const getKey = (providerId) => runtimeKeys[providerId] || '';
+export const hasKey = (providerId) => getKey(providerId).length > 0;
+
+export function setKey(providerId, value) {
+  if (!(providerId in KEY_SOURCES)) throw new Error(`Fournisseur de clé inconnu : ${providerId}`);
+  runtimeKeys[providerId] = String(value || '').trim();
+  return runtimeKeys[providerId];
+}
+
+/** Identifiant de fournisseur à partir du nom de variable d'environnement. */
+export const providerIdForEnvVar = (envVar) =>
+  Object.entries(KEY_SOURCES).find(([, source]) => source.envVars.includes(envVar))?.[0] || null;
+
+/** Mode force par variable d'environnement (DEMO=1 => jamais d'appel distant). */
 export const FORCE_DEMO = ['1', 'true', 'yes'].includes(
   String(process.env.DEMO || '').toLowerCase(),
 );
@@ -262,11 +275,12 @@ export const findById = (list, id) => list.find((item) => item.id === id);
 export const getOptions = () => ({
   videoTypes: VIDEO_TYPES.map(({ id, label, hint }) => ({ id, label, hint })),
   ambiances: AMBIANCES.map(({ id, label, hint }) => ({ id, label, hint })),
-  durations: DURATIONS.map(({ id, label, note, seconds }) => ({ id, label, note, seconds })),
+  durations: DURATIONS.map(({ id, label, seconds }) => ({ id, label, seconds })),
   models: MODELS.map(({ id, label }) => ({ id, label })),
   textModes: TEXT_MODES.map(({ id, label, hint }) => ({ id, label, hint })),
   aspectRatios: ASPECT_RATIOS,
   resolutions: RESOLUTIONS,
+  // Les fournisseurs sont lus dynamiquement pour refléter les clés présentes.
   defaults: {
     videoType: VIDEO_TYPES[0].id,
     ambiance: AMBIANCES[0].id,
@@ -281,5 +295,21 @@ export const getOptions = () => ({
     adMessageMax: LIMITS.adMessageMax,
     uploadMaxBytes: LIMITS.uploadMaxBytes,
     acceptedMime: LIMITS.acceptedMime,
+  },
+  keySources: Object.fromEntries(
+    Object.entries(KEY_SOURCES).map(([id, source]) => [
+      id,
+      {
+        label: source.label,
+        docsUrl: source.docsUrl,
+        placeholder: source.placeholder,
+        configured: hasKey(id),
+      },
+    ]),
+  ),
+  // Modèles par défaut des fournisseurs à catalogue (réglables par variables).
+  providerModels: {
+    fal: process.env.FAL_MODEL || 'fal-ai/wan-i2v',
+    replicate: process.env.REPLICATE_MODEL || 'wan-video/wan-2.2-i2v-fast',
   },
 });

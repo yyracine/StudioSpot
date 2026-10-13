@@ -433,6 +433,40 @@ export async function remux(src, dst, { cwd, logPath }) {
   return dst;
 }
 
+/**
+ * Ajoute une nappe sonore synthetisee a une video muette.
+ *
+ * Sert aux fournisseurs qui ne generent pas d'audio (fal, Replicate) : la video
+ * arrive sans piste son, et l'ambiance choisie est produite localement. C'est
+ * une nappe d'accompagnement, pas une musique produite : elle assure la
+ * coherence de l'ambiance sans pretendre remplacer une vraie bande son.
+ */
+export async function muxAmbianceAudio(src, dst, { ambiance, seconds, cwd, logPath }) {
+  const audioSource = demoAudioSource(ambiance, seconds);
+  if (!audioSource) return remux(src, dst, { cwd, logPath });
+
+  const fadeOutStart = Math.max(0, seconds - 0.8);
+  await run(
+    [
+      '-y',
+      '-loglevel', 'warning',
+      '-i', path.resolve(src),
+      '-f', 'lavfi',
+      '-i', audioSource,
+      '-ac', '2',
+      '-af', `volume=0.9,afade=t=in:st=0:d=0.6,afade=t=out:st=${fadeOutStart.toFixed(2)}:d=0.8`,
+      '-c:v', 'copy',
+      '-c:a', 'aac',
+      '-b:a', '160k',
+      '-shortest',
+      '-movflags', '+faststart',
+      path.resolve(dst),
+    ],
+    { cwd, logPath },
+  );
+  return dst;
+}
+
 /* ------------------------------------------------------------------ *
  * Mode demo : rendu local a partir de la photo, sans cle API
  * ------------------------------------------------------------------ */

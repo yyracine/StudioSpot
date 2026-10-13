@@ -6,7 +6,7 @@
  * mais le message publicitaire et le nom du produit sont repris MOT POUR MOT
  * (en francais) : c'est ce texte exact qui doit apparaitre a l'ecran.
  */
-import { AMBIANCES, DURATIONS, MODELS, TEXT_MODES, VIDEO_TYPES, findById } from './config.js';
+import { AMBIANCES, TEXT_MODES, VIDEO_TYPES, findById } from './config.js';
 
 /** Nettoyage defensif : une seule ligne, espaces compresses. */
 const oneLine = (value) => String(value || '').replace(/\s+/g, ' ').trim();
@@ -55,15 +55,15 @@ const textBlock = (textMode, productName, adMessage) => {
   );
 };
 
-/** Bloc audio : pilote l'audio natif de Veo (toujours actif). */
-const audioBlock = (ambiance) => ambiance.prompt;
+/** Bloc audio : ne s'adresse qu'aux modeles a audio natif. */
+const audioBlock = (ambiance, nativeAudio = true) => (nativeAudio ? ambiance.prompt : null);
 
 /** Bloc technique : duree, cadrage, qualite, interdits. */
 const technicalBlock = ({ durationSeconds, aspectRatio, resolution, extend }) =>
   [
     `The clip is a ${durationSeconds} second ${aspectRatio} vertical-or-landscape commercial shot at ${resolution}.`,
     extend
-      ? 'This is the first part of a longer 15 second advert: it must end in a state that can be ' +
+      ? 'This is the first part of a longer advert: it must end in a state that can be ' +
         'continued naturally and seamlessly in a following shot.'
       : 'The shot must be self-contained and feel complete.',
     'Motion must be perfectly smooth and continuous, with a stable, cinematic camera. No flicker, ' +
@@ -77,22 +77,25 @@ const technicalBlock = ({ durationSeconds, aspectRatio, resolution, extend }) =>
 /**
  * Prompt principal (premier plan de la video).
  *
+ * Le bloc technique est derive du PLAN DU FOURNISSEUR, pas d'une duree codee en
+ * dur : c'est la seule facon de rester juste quand on change de moteur.
+ *
  * @param {object} input
  * @param {string} input.videoTypeId
  * @param {string} input.ambianceId
- * @param {string} input.durationId
  * @param {string} input.textModeId
  * @param {string} input.productName
  * @param {string} input.adMessage
- * @param {string} input.aspectRatio   '16:9' | '9:16'
- * @param {string} input.resolution    '720p' | '1080p'
+ * @param {object} input.plan                 plan renvoye par le fournisseur
+ * @param {boolean} [input.nativeAudio]       le modele genere-t-il son propre audio ?
+ * @param {boolean} [input.rendersText]       le modele sait-il dessiner du texte ?
  * @returns {string}
  */
 export function buildMainPrompt(input) {
   const videoType = findById(VIDEO_TYPES, input.videoTypeId) || VIDEO_TYPES[0];
   const ambiance = findById(AMBIANCES, input.ambianceId) || AMBIANCES[0];
-  const duration = findById(DURATIONS, input.durationId) || DURATIONS[1];
   const textMode = findById(TEXT_MODES, input.textModeId) || TEXT_MODES[0];
+  const plan = input.plan;
 
   const productName = oneLine(input.productName);
   const adMessage = oneLine(input.adMessage);
@@ -102,12 +105,12 @@ export function buildMainPrompt(input) {
     productFidelity(productName),
     videoType.motion,
     textBlock(textMode.id, productName, adMessage),
-    audioBlock(ambiance),
+    audioBlock(ambiance, input.nativeAudio !== false),
     technicalBlock({
-      durationSeconds: duration.veoDurationSeconds,
-      aspectRatio: input.aspectRatio,
-      resolution: input.resolution,
-      extend: duration.extend,
+      durationSeconds: plan.steps[0].seconds,
+      aspectRatio: plan.aspectRatio,
+      resolution: plan.resolution,
+      extend: plan.steps.some((step) => step.kind === 'extend'),
     }),
   ]
     .filter(Boolean)
@@ -115,8 +118,8 @@ export function buildMainPrompt(input) {
 }
 
 /**
- * Prompt d'extension : deuxieme segment de la video de 15 s.
- * Veo ajoute 7 s au clip precedent, ce qui porte 8 s + 7 s a exactement 15 s.
+ * Prompt d'extension : segment supplementaire pour atteindre la duree visee
+ * (Veo ajoute 7 s au clip precedent).
  */
 export function buildExtensionPrompt(input) {
   const videoType = findById(VIDEO_TYPES, input.videoTypeId) || VIDEO_TYPES[0];
@@ -130,7 +133,7 @@ export function buildExtensionPrompt(input) {
     videoType.motion,
     productFidelity(oneLine(input.productName)),
     textBlock(textMode.id, oneLine(input.productName), oneLine(input.adMessage)),
-    ambiance.prompt,
+    audioBlock(ambiance, input.nativeAudio !== false),
     'The continuation lasts 7 seconds and must flow naturally out of the last frame of the ' +
       'previous clip, holding the product in a final hero framing with a smooth, stable camera. ' +
       'Photorealistic high-end advertising quality. Avoid: blurry or warped product, deformed ' +
@@ -138,53 +141,4 @@ export function buildExtensionPrompt(input) {
   ]
     .filter(Boolean)
     .join('\n\n');
-}
-
-/**
- * Configuration d'appel Veo.
- * On ne transmet que les champs documentes comme supportes par l'API Gemini
- * (generateAudio / lastFrame ne sont pas supportes pour Veo 3.x cote Gemini).
- */
-export function buildVeoConfig({ durationId, aspectRatio, resolution, seed }) {
-  const duration = findById(DURATIONS, durationId) || DURATIONS[1];
-  const config = {
-    numberOfVideos: 1,
-    durationSeconds: duration.veoDurationSeconds,
-    aspectRatio,
-    resolution,
-    // L'image-to-video Veo n'accepte que "allow_adult".
-    personGeneration: 'allow_adult',
-  };
-  if (Number.isInteger(seed)) config.seed = seed;
-
-  // L'extension impose 8 s et du 720p : on verrouille ces valeurs.
-  if (duration.extend) {
-    config.durationSeconds = 8;
-    config.resolution = '720p';
-  } else if (config.durationSeconds !== 8) {
-    // Veo n'autorise le 1080p/4k que sur des clips de 8 s.
-    config.resolution = '720p';
-  }
-  return config;
-}
-
-/** Resume lisible de la production, affiche dans l'interface. */
-export function describePlan({ durationId, modelId, resolution }) {
-  const duration = findById(DURATIONS, durationId) || DURATIONS[1];
-  const model = findById(MODELS, modelId) || MODELS[0];
-
-  // Veo ne permet le 1080p que sur des clips de 8 s, et l'extension impose 720p.
-  const effectiveResolution =
-    duration.extend || duration.veoDurationSeconds !== 8 || resolution !== '1080p' ? '720p' : '1080p';
-
-  return {
-    seconds: duration.seconds,
-    veoDurationSeconds: duration.veoDurationSeconds,
-    calls: duration.extend ? 2 : 1,
-    trimsTo: duration.trimTo,
-    extended: duration.extend,
-    resolution: effectiveResolution,
-    model: model.label,
-    note: duration.note,
-  };
 }

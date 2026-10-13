@@ -354,6 +354,45 @@ async function main() {
       /^bytes 0-99\//.test(ranged.headers['content-range'] || ''),
   ]);
 
+  const stat_ = await stat(finalPath);
+  console.log(`\nvidéo conservée pour inspection : ${finalPath} (${(stat_.size / 1048576).toFixed(2)} Mo)`);
+
+  /* ---------------- nappe sonore locale (moteurs sans audio) ---------------- *
+   * fal.ai et Replicate ne génèrent pas d'audio : le pipeline ajoute alors une
+   * nappe locale. Ce chemin n'est pas couvert par la production ci-dessus, on
+   * le vérifie donc directement sur un clip muet fabriqué ici.
+   */
+  console.log('');
+  const silent = path.join(TMP, 'source-muette.mp4');
+  await runFfmpeg(
+    [
+      '-y', '-f', 'lavfi', '-i', 'color=c=0x2B3242:s=1280x720:d=4:r=30',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-an', silent,
+    ],
+    path.join(TMP, 'gen-silent.log'),
+  );
+
+  const silentInfo = await probeFile(silent);
+  const { muxAmbianceAudio } = await import('../server/ffmpeg.js');
+  const { AMBIANCES, findById } = await import('../server/config.js');
+
+  const bedded = path.join(TMP, 'nappe-locale.mp4');
+  await muxAmbianceAudio(silent, bedded, {
+    ambiance: findById(AMBIANCES, 'energique'),
+    seconds: silentInfo.duration,
+    cwd: TMP,
+    logPath: path.join(TMP, 'mux.log'),
+  });
+  const beddedInfo = await probeFile(bedded);
+
+  checks.push(['nappe locale : source bien muette', silentInfo.hasAudio === false]);
+  checks.push(['nappe locale : piste audio ajoutée', beddedInfo.hasAudio === true]);
+  checks.push([
+    'nappe locale : durée préservée',
+    Math.abs(beddedInfo.duration - silentInfo.duration) <= 0.3,
+  ]);
+
+  /* ------------------------------- bilan ---------------------------------- */
   console.log('');
   let failed = 0;
   for (const [label, ok] of checks) {
@@ -361,11 +400,18 @@ async function main() {
     if (!ok) failed += 1;
   }
 
-  const stat_ = await stat(finalPath);
-  console.log(`\nvidéo conservée pour inspection : ${finalPath} (${(stat_.size / 1048576).toFixed(2)} Mo)`);
-
   if (failed) throw new Error(`${failed} vérification(s) en échec`);
   console.log('✓ test de bout en bout réussi');
+}
+
+/** Sonde un fichier vidéo (durée + présence audio). */
+async function probeFile(file) {
+  const log = await runFfmpeg(['-i', file], path.join(TMP, 'probe-extra.log'), { tolerant: true });
+  const match = log.match(/Duration:\s*(\d+):(\d+):(\d+\.?\d*)/);
+  return {
+    duration: match ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]) : 0,
+    hasAudio: /Stream #\d+:\d+.*: Audio:/.test(log),
+  };
 }
 
 main().catch((err) => {

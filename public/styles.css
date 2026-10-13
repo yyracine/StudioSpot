@@ -429,6 +429,74 @@ select:hover {
   background: rgba(255, 196, 107, 0.07);
 }
 
+/* ============================ Suggestions IA ========================= */
+.suggest-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -6px 0 10px;
+  flex-wrap: wrap;
+}
+
+.suggest-row .zhint,
+.suggest-row span {
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+.warn-text {
+  color: var(--accent);
+}
+
+/* ======================== Clés API (réglages) ======================== */
+.key-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.key-row {
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(9, 9, 14, 0.45);
+}
+
+.key-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-bottom: 9px;
+}
+
+.key-head strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.key-link {
+  margin-left: auto;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.key-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.key-controls input {
+  flex: 1;
+  min-width: 0;
+}
+
+.key-controls .ghost-btn {
+  flex: none;
+}
+
 /* ============================== Dropzone ============================= */
 .dropzone {
   border: 1.5px dashed var(--border-strong);

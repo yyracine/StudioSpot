@@ -1,9 +1,9 @@
 # Animateur de Photos Produit
 
 Transformez **une photo de produit statique** en **vidéo publicitaire animée** :
-l'application construit le prompt, appelle **Veo** (API Gemini) en image-to-video,
-puis assure toute la post-production — texte promotionnel intégré, coupe à la
-seconde exacte, ambiance sonore ou silence total.
+l'application construit le prompt, appelle un **moteur image-to-video** (Veo,
+fal.ai ou Replicate), puis assure toute la post-production — texte promotionnel
+intégré, coupe à la seconde exacte, ambiance sonore ou silence total.
 
 Conçue pour le e-commerce et le marketing : vêtements, objets, tech.
 
@@ -14,11 +14,13 @@ Conçue pour le e-commerce et le marketing : vêtements, objets, tech.
 - [Ce que fait l'application](#ce-que-fait-lapplication)
 - [Démarrage rapide](#démarrage-rapide)
 - [Les 6 champs du formulaire](#les-6-champs-du-formulaire)
+- [Choisir un moteur](#choisir-un-moteur)
 - [Comment la vidéo est produite](#comment-la-vidéo-est-produite)
-- [Durées : la correspondance avec Veo](#durées--la-correspondance-avec-veo)
+- [Durées : la correspondance avec chaque moteur](#durées--la-correspondance-avec-chaque-moteur)
 - [Texte promotionnel intégré](#texte-promotionnel-intégré)
 - [Audio et « Pas de son »](#audio-et--pas-de-son)
 - [Mode démo (sans clé API)](#mode-démo-sans-clé-api)
+- [Suggestions de messages](#suggestions-de-messages)
 - [Coûts et temps de production](#coûts-et-temps-de-production)
 - [Configuration](#configuration)
 - [API HTTP](#api-http)
@@ -68,25 +70,33 @@ confinés (CI durcie, conteneurs, bacs à sable qui refusent les processus
 enfants). Si vous préférez la commande standard, `npm install` fonctionne
 aussi.
 
-### Activer Veo
+### Activer un moteur
 
-L'application démarre en **mode démo local** tant qu'aucune clé n'est
-renseignée. Pour activer la génération Veo :
+L'application démarre en **rendu local de démonstration** tant qu'aucune clé
+n'est renseignée. Pour activer un vrai moteur, cliquez sur **« Réglages »** et
+renseignez **une seule** des clés suivantes — le premier moteur configuré est
+utilisé :
 
-1. Créez une clé sur [Google AI Studio](https://aistudio.google.com/apikey)
-   (Veo nécessite un projet avec **facturation activée**).
-2. Cliquez sur **« Réglages »** dans l'interface et collez la clé.
+| Moteur | Ce qu'il apporte | Clé |
+|---|---|---|
+| **Veo 3.1** (Google) | Le meilleur rendu : audio natif, texte bien intégré, cohérence du produit. **Nécessite une facturation Google active** (palier Tier 1). | [Google AI Studio](https://aistudio.google.com/apikey) |
+| **fal.ai** | Modèles ouverts (Wan, LTX) ou propriétaires (Kling, Hailuo), facturés à la seconde, bien moins chers. Crédits offerts à l'inscription. | [fal.ai/dashboard/keys](https://fal.ai/dashboard/keys) |
+| **Replicate** | Catalogue très large, utile pour comparer plusieurs modèles. Facturé à la seconde. | [replicate.com/account/api-tokens](https://replicate.com/account/api-tokens) |
 
-La clé est conservée **côté serveur** (fichier `.env`) et n'est jamais renvoyée
-au navigateur. Vous pouvez aussi la placer directement dans `.env` :
+Les clés sont conservées **côté serveur** (fichier `.env`) et ne sont jamais
+renvoyées au navigateur. Vous pouvez aussi les placer directement dans `.env` :
 
 ```bash
 cp .env.example .env
-# puis renseignez GEMINI_API_KEY=...
+# puis renseignez GEMINI_API_KEY=… ou FAL_KEY=… ou REPLICATE_API_TOKEN=…
 ```
 
 Le serveur n'écoute que sur `127.0.0.1` par défaut : ni les photos, ni les
-vidéos, ni la clé ne sortent de la machine.
+vidéos, ni les clés ne sortent de la machine.
+
+> **Avant d'acheter quoi que ce soit** : lancez `node scripts/probe-key.mjs`
+> pour vérifier ce que votre clé Gemini a réellement le droit d'appeler. C'est
+> l'outil qui distingue une vraie limite de débit d'une absence d'accès.
 
 ---
 
@@ -101,8 +111,9 @@ vidéos, ni la clé ne sortent de la machine.
 | **Ambiance sonore** | Détermine la musique décrite à Veo, et si nécessaire la suppression de l'audio. |
 | **Durée** | 5, 8 ou 15 secondes — traduite en plan de production réel. |
 
-**Options avancées** : cadrage (auto / 16:9 / 9:16), définition (720p / 1080p),
-modèle Veo (qualité ou *Fast*), et mode de rendu du texte.
+**Options avancées** : **moteur de génération** (Veo / fal.ai / Replicate /
+rendu local), cadrage (auto / 16:9 / 9:16), définition (720p / 1080p), modèle
+Veo, et mode de rendu du texte.
 
 ### Les quatre types de vidéo
 
@@ -115,55 +126,112 @@ modèle Veo (qualité ou *Fast*), et mode de rendu du texte.
 
 ---
 
+## Choisir un moteur
+
+Le pipeline ne connaît **aucun** moteur en particulier : chaque moteur est un
+module de `server/providers/` qui déclare ce qu'il sait faire.
+
+| Capacité | Veo 3.1 | fal.ai | Replicate | Rendu local |
+|---|---|---|---|---|
+| Animation IA de la photo | ✅ | ✅ | ✅ | ❌ (Ken Burns) |
+| **Audio généré par le modèle** | ✅ | ❌ | ❌ | ❌ (nappe locale) |
+| **Texte dessiné par le modèle** | ✅ | ❌ | ❌ | ❌ (incrusté) |
+| Extension (pour 15 s) | ✅ +7 s | ❌ | ❌ | — |
+| Nécessite une clé payante | ✅ oui | ❌ crédits offerts | ❌ crédits offerts | — |
+| Coût indicatif | élevé | faible | faible | **nul** |
+
+Ces capacités ne sont pas cosmétiques : elles changent réellement le résultat.
+L'application en tient compte automatiquement :
+
+- **moteur sans audio natif** → une **nappe sonore locale** est ajoutée par
+  ffmpeg selon l'ambiance choisie (accord synthétisé, fondu entrant/sortant) ;
+  « Pas de son » laisse la vidéo muette ;
+- **moteur sans rendu de texte** → le mode « Texte généré par Veo » bascule
+  automatiquement sur l'incrustation ffmpeg, qui garantit l'orthographe, et
+  l'utilisateur en est informé dans le journal ;
+- **moteur sans extension** → la durée est plafonnée à ce que le modèle produit
+  (le plan l'annonce avant lancement, par exemple « ramenée de 15 s à 5 s »).
+
+### Ajouter un moteur
+
+Créez `server/providers/monmoteur.js` en respectant l'interface, puis
+déclarez-le dans `server/providers/index.js` :
+
+```js
+export default {
+  id: 'monmoteur',
+  label: 'Mon moteur',
+  keyProvider: 'monmoteur',        // source de clé (voir KEY_SOURCES)
+  capabilities: { nativeAudio: false, rendersText: false, extension: false },
+  isConfigured() { /* une clé est-elle présente ? */ },
+  buildPlan({ durationId, aspectRatio, resolution }) { /* plan de production */ },
+  buildConfig(plan) { /* paramètres du modèle */ },
+  async generateClip({ imagePath, prompt, plan, outputPath, onProgress }) { /* … */ },
+  describeRequest({ plan, prompt }) { /* décrit l'appel SANS l'envoyer */ },
+};
+```
+
+`describeRequest` n'est pas décoratif : c'est ce qui permet de **vérifier un
+adaptateur sans dépenser un centime** (`node scripts/check-providers.mjs`).
+
+---
+
 ## Comment la vidéo est produite
 
 ```
-Photo ─► normalisation ─► prompt ─► VEO image-to-video ─► post-production ─► MP4
-           (ffmpeg)                  (8 s, audio natif)      (ffmpeg)
+Photo ─► normalisation ─► prompt ─► MOTEUR image-to-video ─► post-production ─► MP4
+           (ffmpeg)                  (plan déclaré par le      (ffmpeg)
+                                      moteur, 1 ou 2 appels)
 ```
 
 1. **Préparation** — la photo est redimensionnée et ré-encodée, ses dimensions
-   sont relevées, le cadrage et la résolution sont arrêtés.
-2. **Prompt** — un prompt anglais structuré (la seule langue pleinement évaluée
-   par Veo) assemble : la scène du type de vidéo choisi, un bloc de **fidélité
-   produit** (« conserve forme, couleur, matière, logo, étiquettes »), le
-   mouvement, les consignes de texte, l'ambiance sonore et les contraintes
-   techniques.
-3. **Génération Veo** — appel `generateVideos` en image-to-video, puis suivi de
-   l'opération longue durée et téléchargement du MP4 (Veo ne conserve les
-   vidéos que **2 jours**).
-4. **Extension** (durée 15 s uniquement) — un second appel étend le plan de
-   7 secondes à partir de la vidéo précédente.
-5. **Post-production** — coupe à la seconde exacte, suppression de l'audio si
-   « Pas de son », incrustation du texte promotionnel, extraction du poster et
-   écriture des métadonnées.
+   sont relevées, le cadrage est arrêté.
+2. **Plan** — le moteur déclare ce qu'il va réellement produire : nombre
+   d'appels, durée de chacun, coupe finale, résolution. C'est ce plan, et non
+   une valeur codée en dur, qui pilote tout le reste.
+3. **Prompt** — un prompt anglais structuré (la seule langue pleinement évaluée)
+   assemble : la scène du type de vidéo, un bloc de **fidélité produit**
+   (« conserve forme, couleur, matière, logo, étiquettes »), le mouvement, les
+   consignes de texte, l'ambiance sonore — uniquement si le moteur gère l'audio
+   — et les contraintes techniques issues du plan.
+4. **Génération** — appel du moteur, suivi de l'opération longue durée, puis
+   téléchargement du MP4 (les services ne conservent pas les fichiers
+   indéfiniment : Veo les supprime au bout de 2 jours).
+5. **Étapes supplémentaires** — prolongation, si le plan en prévoit.
+6. **Post-production** — nappe sonore locale si le moteur n'en produit pas,
+   coupe à la seconde exacte, suppression de l'audio si « Pas de son »,
+   incrustation du texte, extraction du poster, écriture des métadonnées.
 
 L'avancement est diffusé en **Server-Sent Events** ; la production continue même
 si vous fermez l'onglet.
 
 ---
 
-## Durées : la correspondance avec Veo
+## Durées : la correspondance avec chaque moteur
 
-Point important : **l'API Veo n'accepte que 4, 6 ou 8 secondes**. Les durées
-demandées sont donc traduites en plan de production réel, sans jamais mentir sur
-le résultat livré :
+Les durées demandées sont **5, 8 ou 15 secondes**, mais aucun moteur ne les
+accepte telles quelles. Chaque fournisseur traduit donc la demande en plan de
+production réel, et **annonce ce qu'il livrera** avant de lancer :
 
-| Demandé | Ce qui est réellement produit |
-|---|---|
-| **5 s** | Veo génère **6 s**, puis ffmpeg coupe précisément à **5,00 s**. |
-| **8 s** | Durée native du modèle : **8 s**. |
-| **15 s** | Veo génère **8 s**, puis une **extension de +7 s** à partir du plan précédent — soit **exactement 15 s**. |
+| Demandé | Veo 3.1 | fal.ai / Replicate |
+|---|---|---|
+| **5 s** | Veo génère **6 s**, puis ffmpeg coupe précisément à **5,00 s**. | Un clip de 5 s. |
+| **8 s** | Durée native : **8 s**. | Clip de 5 s → **limité à 5 s**, annoncé comme tel. |
+| **15 s** | 8 s **+ extension de 7 s** = **exactement 15 s** (2 appels). | Clip de 5 s → **limité à 5 s**, annoncé comme tel. |
 
-Contraintes appliquées automatiquement :
+Contraintes Veo appliquées automatiquement :
 
 - l'extension impose **8 s, du 720p et un ratio 16:9 ou 9:16** ;
 - le **1080p n'est disponible que pour des clips de 8 s** — ailleurs, la
   définition est ramenée à 720p ;
 - l'image-to-video exige `personGeneration: "allow_adult"` ;
-- l'application n'envoie que les paramètres documentés comme supportés par
-  l'API Gemini (`generateAudio` et `lastFrame` n'y sont pas supportés pour
-  Veo 3.x — les transmettre provoquerait une erreur).
+- seuls les paramètres documentés comme supportés par l'API Gemini sont
+  transmis (`generateAudio` et `lastFrame` n'y sont **pas** supportés pour
+  Veo 3.x — les envoyer provoquerait une erreur).
+
+Pour fal.ai et Replicate, la durée d'un clip et l'identifiant du modèle sont
+**propres au modèle choisi** : réglez `FAL_CLIP_SECONDS` / `REPLICATE_CLIP_SECONDS`
+et l'identifiant du modèle dans `.env` d'après sa fiche.
 
 ---
 
@@ -191,34 +259,57 @@ Veo 3.x **génère toujours de l'audio** ; il n'existe pas de paramètre pour le
 désactiver. L'ambiance se pilote donc par le prompt, et l'option « Pas de son »
 est garantie par la post-production :
 
-| Ambiance | Prompt envoyé à Veo | Post-production |
+| Ambiance | Prompt envoyé au moteur (si audio natif) | Post-production |
 |---|---|---|
 | **Corporate professionnel** | Nappe propre, piano chaud, tempo posé, whoosh discret aux transitions. | — |
 | **Énergique et fun** | Pop entraînante, beat marqué, claps, hook synthétique. | — |
 | **Luxe et élégant** | Cordes soyeuses, nappe raffinée, shimmer, tempo lent. | — |
-| **Pas de son** | Silence total demandé dans le prompt. | **Piste audio supprimée** (`-an`) : la vidéo est réellement muette, quoi que produise Veo. |
+| **Pas de son** | Silence total demandé dans le prompt. | **Piste audio supprimée** (`-an`) : la vidéo est réellement muette, quoi que produise le moteur. |
 
 Chaque prompt précise « instrumental seulement : ni dialogue, ni voix off, ni
 paroles ».
+
+**Avec un moteur sans audio natif** (fal.ai, Replicate), le bloc audio est
+retiré du prompt — décrire une musique à un modèle qui ne sait pas en produire
+serait inutile — et une **nappe sonore locale** est synthétisée par ffmpeg selon
+l'ambiance choisie : un accord dont le timbre et la pulsation varient (posé pour
+le corporate, marqué pour l'énergique, lent et aigu pour le luxe), avec fondu
+entrant et sortant. C'est un accompagnement, pas une musique produite : pour un
+rendu final haut de gamme, remplacez la piste par votre propre musique dans un
+outil de montage.
+
+---
+
+## Suggestions de messages
+
+Le bouton **« Proposer des messages »** demande 5 accroches publicitaires à
+`gemini-2.5-flash`, en s'appuyant sur le nom du produit, le type de vidéo et
+l'ambiance. Les contraintes imposées au modèle : 45 caractères maximum (pour
+tenir à l'écran), pas d'emoji, pas de superlatif mensonger.
+
+C'est une aide **gratuite** : le palier gratuit de Gemini couvre les modèles
+texte, même lorsqu'il refuse Veo. Si aucune clé Gemini n'est présente — ou si le
+quota texte est atteint — le serveur renvoie un **repli local** de cinq accroches
+construites hors ligne : l'interface propose toujours quelque chose.
 
 ---
 
 ## Mode démo (sans clé API)
 
-Sans clé API Gemini — ou avec `DEMO=1` — l'application reste **entièrement
-utilisable et testable** : la photo est animée localement par un effet Ken Burns
-(`zoompan`), l'habillage texte est **exactement le même** que pour une vidéo
-Veo, et une nappe sonore est synthétisée par ffmpeg selon l'ambiance choisie
-(accord dont le timbre et la pulsation varient). L'option « Pas de son » produit
-là aussi une vidéo réellement muette.
+Sans aucune clé — ou avec `DEMO=1`, ou en choisissant « Rendu local » dans les
+options avancées — l'application reste **entièrement utilisable et testable** :
+la photo est animée localement par un effet Ken Burns (`zoompan`), l'habillage
+texte est **exactement le même** que pour une vidéo générée, et une nappe sonore
+est synthétisée par ffmpeg selon l'ambiance choisie. L'option « Pas de son »
+produit là aussi une vidéo réellement muette.
 
 Cela permet de valider le cadrage, le texte et le montage sans dépenser le
-moindre crédit Veo. L'interface signale clairement ce mode.
+moindre crédit. L'interface signale clairement ce mode.
 
-Ce mode sert aussi de **repli immédiat** : si un appel Veo est refusé (quota,
-accès, filtre de sécurité), la zone d'erreur propose « **Relancer en mode démo
-local** », qui reproduit la vidéo à partir de la même photo et des mêmes
-réglages, sans nouvel appel Veo. Vous n'êtes jamais laissé sans résultat.
+Ce mode sert aussi de **repli immédiat** : si un appel est refusé (quota, accès,
+filtre de sécurité), la zone d'erreur propose « **Relancer en mode démo local** »,
+qui reproduit la vidéo à partir de la même photo et des mêmes réglages, sans
+nouvel appel distant. Vous n'êtes jamais laissé sans résultat.
 
 ---
 
@@ -238,14 +329,21 @@ réglages, sans nouvel appel Veo. Vous n'êtes jamais laissé sans résultat.
 
 ## Configuration
 
-Toutes les variables sont optionnelles sauf la clé (`voir .env.example`) :
+Toutes les variables sont optionnelles sauf les clés (voir `.env.example`) :
 
 | Variable | Défaut | Description |
 |---|---|---|
-| `GEMINI_API_KEY` | — | Clé Google AI Studio. Sans elle : mode démo. |
+| `GEMINI_API_KEY` | — | Clé Google AI Studio (Veo + suggestions de messages). |
+| `FAL_KEY` | — | Clé fal.ai. |
+| `REPLICATE_API_TOKEN` | — | Jeton Replicate. |
+| `FAL_MODEL` | `fal-ai/wan-i2v` | Modèle fal utilisé. |
+| `FAL_CLIP_SECONDS` | `5` | Durée d'un clip produite par ce modèle. |
+| `REPLICATE_MODEL` | `wan-video/wan-2.2-i2v-fast` | Modèle Replicate (« owner/nom » ou « owner/nom:hash »). |
+| `REPLICATE_CLIP_SECONDS` | `5` | Durée d'un clip produite par ce modèle. |
+| `PROVIDER` | — | Force un moteur (`veo`, `fal`, `replicate`) même si plusieurs clés existent. |
 | `PORT` | `5178` | Port d'écoute. |
 | `HOST` | `127.0.0.1` | Interface d'écoute (boucle locale par défaut). |
-| `DEMO` | — | `1` force le mode démo, même avec une clé. |
+| `DEMO` | — | `1` force le rendu local, même avec des clés. |
 | `FFMPEG_PATH` | paquet npm | Chemin vers un ffmpeg spécifique. |
 
 ---
@@ -254,19 +352,20 @@ Toutes les variables sont optionnelles sauf la clé (`voir .env.example`) :
 
 | Méthode | Route | Description |
 |---|---|---|
-| `GET` | `/api/health` | État du serveur, mode (Veo/démo), ffmpeg, police. |
+| `GET` | `/api/health` | État du serveur, moteurs disponibles et clés configurées. |
 | `GET` | `/api/options` | Catalogues des listes déroulantes (source unique de vérité). |
-| `GET` | `/api/plan?duration=&model=` | Plan de production (appels Veo, coupe, résolution). |
+| `GET` | `/api/plan?duration=&provider=&aspectRatio=&resolution=` | Plan réel annoncé par le moteur retenu. `provider=demo` force le rendu local. |
 | `POST` | `/api/jobs` | Crée une production (`multipart/form-data`). |
 | `GET` | `/api/jobs/:id` | État d'une production. |
 | `GET` | `/api/jobs/:id/events` | Avancement en **SSE**. |
 | `GET` | `/api/jobs/:id/video` | Vidéo finale (`?download=1` pour forcer le téléchargement). |
 | `GET` | `/api/jobs/:id/poster` | Image de poster. |
 | `GET` | `/api/jobs/:id/source` | Photo source (aperçu). |
-| `GET` | `/api/jobs/:id/meta` | Métadonnées (réglages, prompt utilisé). |
-| `POST` | `/api/jobs/:id/retry` | Relance avec les mêmes réglages. Corps `{"mode":"demo"}` pour forcer un rendu local sans appel Veo. |
-| `POST` | `/api/settings/api-key` | Enregistre et vérifie la clé Gemini. |
-| `POST` | `/api/settings/api-key/clear` | Retire la clé (retour au mode démo). |
+| `GET` | `/api/jobs/:id/meta` | Métadonnées (réglages, plan, prompt utilisé). |
+| `POST` | `/api/jobs/:id/retry` | Relance avec les mêmes réglages. Corps `{"mode":"demo"}` pour forcer un rendu local. |
+| `POST` | `/api/suggest-messages` | 5 accroches publicitaires (`{productName, videoTypeId, ambianceId}`). |
+| `POST` | `/api/settings/api-key` | Enregistre une clé (`{key, value}` ; `key` = `gemini`, `fal` ou `replicate`). |
+| `POST` | `/api/settings/api-key/clear` | Retire une clé (`{key}`). |
 | `POST` | `/api/settings/api-key/test` | Teste une clé sans l'enregistrer. |
 | `GET` | `/api/diagnostics` | Vérifie que ffmpeg est opérationnel. |
 
@@ -279,7 +378,8 @@ curl -X POST http://127.0.0.1:5178/api/jobs \
   -F adMessage="Nouveau ! -30% cette semaine" \
   -F videoTypeId=rotation360 \
   -F ambianceId=luxe \
-  -F durationId=8
+  -F durationId=8 \
+  -F providerId=veo
 ```
 
 ---
@@ -289,29 +389,37 @@ curl -X POST http://127.0.0.1:5178/api/jobs \
 Le serveur doit tourner (`npm start`) dans un autre terminal.
 
 ```bash
-npm test                                  # 8 s, corporate, habillage complet
+npm test                                        # bout en bout, en rendu local
 node scripts/smoke-test.mjs --duration 5
 node scripts/smoke-test.mjs --duration 15 --ambiance aucun
 node scripts/smoke-test.mjs --duration 5 --vertical --ambiance luxe --videoType beforeAfter
+node scripts/smoke-test.mjs --veo               # vrai appel Veo (payant, consomme du quota)
+
+node scripts/check-providers.mjs                # vérifie les 3 adaptateurs SANS clé
+node scripts/probe-key.mjs                      # ce que votre clé Gemini peut réellement appeler
 ```
 
-Le test de bout en bout :
+**`npm test`** (bout en bout) :
 
 1. fabrique une **photo produit synthétique** avec ffmpeg ;
-2. envoie le formulaire complet en **forçant le mode démo local** ;
+2. envoie le formulaire complet en **forçant le rendu local** ;
 3. suit la production réelle ;
-4. télécharge la vidéo et **vérifie la durée, la définition et la présence ou
-   l'absence de piste audio** ;
-5. contrôle la cohérence des identifiants DOM entre `index.html` et `app.js`.
+4. télécharge la vidéo et vérifie **durée, définition, présence ou absence de
+   piste audio**, disponibilité du poster, et **lecture partielle HTTP 206**
+   (indispensable pour que le lecteur puisse se déplacer dans la timeline) ;
+5. vérifie la **cohérence des identifiants DOM** entre `index.html` et `app.js` ;
+6. vérifie que les **catalogues** contiennent bien les 4 types de vidéo, les
+   4 ambiances et les durées 5/8/15 s ;
+7. fabrique un clip muet et contrôle l'ajout de la **nappe sonore locale**
+   (chemin utilisé par fal.ai et Replicate, qu'on ne peut pas tester sans clé).
 
-Il est **gratuit et déterministe** : il n'appelle jamais Veo, même quand une clé
-est configurée, et exerce exactement le même chemin de post-production
-(incrustation texte, coupe, suppression audio). Pour tester un vrai appel Veo
-(un crédit est consommé) :
+Il est **gratuit et déterministe** : il n'appelle jamais de moteur distant, même
+quand des clés sont configurées.
 
-```bash
-node scripts/smoke-test.mjs --veo
-```
+**`check-providers.mjs`** est le test le plus utile quand on ajoute un moteur :
+il calcule les plans pour 5, 8 et 15 s, puis affiche la **requête exacte qui
+serait envoyée** (URL, en-têtes, corps) sans l'envoyer. C'est ainsi qu'un
+adaptateur se valide **sans clé et sans dépenser un centime**.
 
 ---
 
@@ -319,19 +427,27 @@ node scripts/smoke-test.mjs --veo
 
 ```
 server/
-  index.js     serveur HTTP, upload, validation, routes SSE
-  config.js    source unique de vérité : catalogues, bornes, plan de durées
-  prompts.js   construction des prompts Veo + configuration d'appel
-  veo.js       client Veo : génération, extension, suivi, téléchargement
-  ffmpeg.js    post-production : coupe, audio, habillage, rendu démo
-  pipeline.js  orchestration d'une production complète
-  jobs.js      suivi des tâches + diffusion SSE
+  index.js        serveur HTTP, upload, validation, routes SSE
+  config.js       source unique de vérité : catalogues, bornes, clés API
+  prompts.js      construction des prompts à partir du plan du moteur
+  pipeline.js     orchestration d'une production complète
+  jobs.js         suivi des tâches + diffusion SSE
+  ffmpeg.js       post-production : coupe, audio, habillage, rendu local
+  suggest.js      accroches publicitaires (modèle texte, gratuit)
+  providers/
+    index.js      registre et sélection du moteur
+    http.js       outils partagés : polling, téléchargement, erreurs
+    veo.js        Veo 3.1 (API Gemini)  — audio natif, extension
+    fal.js        fal.ai (file d'attente queue.fal.run)
+    replicate.js  Replicate (api.replicate.com)
 public/
-  index.html   structure de l'interface
-  styles.css   thème studio sombre
-  app.js       logique client, aperçu fidèle de l'habillage
+  index.html      structure de l'interface
+  styles.css      thème studio sombre
+  app.js          logique client, aperçu fidèle de l'habillage
 scripts/
-  smoke-test.mjs  test de bout en bout
+  smoke-test.mjs       test de bout en bout (gratuit)
+  check-providers.mjs  vérifie les adaptateurs sans clé
+  probe-key.mjs        ce que la clé Gemini peut réellement appeler
 ```
 
 ---
@@ -340,28 +456,43 @@ scripts/
 
 | Symptôme | Cause probable et solution |
 |---|---|
-| Le bandeau indique « Mode démo local » | Aucune clé API valide. Cliquez sur « Réglages » et ajoutez la clé. |
-| « Clé API refusée par Google » | Clé erronée ou expirée : régénérez-la dans AI Studio. |
-| **« Veo a refusé la requête : quota ou accès indisponible (429) »** | Cause la plus fréquente : **le projet Google n'est pas sur un palier payant**. Veo est un modèle *preview* qui exige un compte de facturation actif (palier **Tier 1** : « link an active billing account »). Vérifiez vos limites réelles sur <https://aistudio.google.com/rate-limit> : **si Veo y affiche 0, il faut activer la facturation** sur le projet lié à la clé. S'il s'agit d'une vraie limite de débit, patientez une minute. Le message « check your plan and billing details » de Google désigne le palier, pas une panne. |
-| Bloqué par ce 429 et vous voulez avancer tout de suite | Cliquez sur **« Relancer en mode démo local »** dans la zone d'erreur : la vidéo est produite immédiatement, avec le même habillage et la même bande son, sans appel Veo ni coût. |
+| Le bandeau indique « Mode démo local » | Aucune clé de moteur configurée. Cliquez sur « Réglages » et ajoutez une clé, ou choisissez « Rendu local » volontairement. |
+| « Clé API refusée par Google » / par le service | Clé erronée ou expirée : régénérez-la chez le fournisseur. |
+| **« Veo a refusé la requête : quota ou accès indisponible (429) »** | Cause la plus fréquente : **le projet Google n'est pas sur un palier payant**. Veo est un modèle *preview* qui exige un compte de facturation actif (palier **Tier 1** : « link an active billing account »). Vérifiez vos limites réelles sur <https://aistudio.google.com/rate-limit> : **si Veo y affiche 0, il faut activer la facturation**. Le message « check your plan and billing details » désigne le palier, pas une panne. Lancez `node scripts/probe-key.mjs` pour confirmer. |
+| Bloqué par ce 429 et vous voulez avancer tout de suite | Deux solutions : cliquez sur **« Relancer en mode démo local »**, ou **ajoutez une clé fal.ai / Replicate** (crédits offerts) et choisissez ce moteur dans les options avancées. |
+| « Crédits ou quota insuffisants chez le fournisseur » | Rechargez votre compte fal.ai / Replicate, ou changez de moteur. |
+| La vidéo ne fait que 5 s alors que j'ai demandé 15 s | Le modèle choisi ne produit que des clips de 5 s et ne sait pas les prolonger : c'est annoncé dans le plan avant lancement. Utilisez Veo (extension +7 s) pour atteindre exactement 15 s. |
+| Le texte n'est pas celui que j'ai écrit | Vous utilisez « Texte généré par Veo » : la restitution du texte par le modèle n'est pas garantie. Choisissez « Incrustation nette », où ffmpeg écrit le texte exact. |
+| La musique ne correspond pas à une vraie bande son | Avec fal.ai / Replicate, aucune IA ne produit l'audio : c'est une nappe locale de ffmpeg. Utilisez Veo (audio natif) ou remplacez la piste en montage. |
 | « Veo n'est pas disponible pour ce projet » | Facturation absente sur le projet Google, ou région non desservie. |
 | « La génération a été bloquée par les filtres de sécurité » | Photo ou message refusé (allégations santé, marque tierce, personne identifiable). Changez la photo ou reformulez le message. |
 | « Veo n'a renvoyé aucune vidéo » | Fréquent quand l'**audio** est bloqué par les filtres. Relancez la génération. |
 | « ffmpeg est introuvable » | `npm install` incomplet, ou définissez `FFMPEG_PATH`. Vérifiez avec `GET /api/diagnostics`. |
 | La vidéo de 5 s fait 5,04 s | Normal : la coupe est précise à l'image près (1/30 s). |
 | Production très lente | Veo peut dépasser 6 minutes aux heures de pointe, et 15 s enchaîne deux générations. |
+| `parameter not supported` chez fal / Replicate | Les noms de paramètres varient d'un modèle à l'autre. Lancez `node scripts/check-providers.mjs` pour voir le corps exact envoyé, puis ajustez `FAL_MODEL` / `REPLICATE_MODEL` et les entrées dans le provider. |
 
 ---
 
 ## Limites connues
 
 - **Veo 3.1 est un modèle en aperçu** : disponibilité, quotas et tarifs peuvent
-  évoluer.
+  évoluer. Il exige une facturation active côté Google.
 - Les vidéos Veo sont **supprimées au bout de 2 jours** côté Google — le
   téléchargement local est donc effectué immédiatement. Les fichiers produits
   restent, eux, dans `outputs/`.
 - L'**extension vidéo n'est possible que sur des vidéos générées par Veo**, en
   8 s et 720p — c'est la raison des contraintes appliquées à l'option 15 s.
+- **Les adaptateurs fal.ai et Replicate n'ont pas pu être testés en conditions
+  réelles** (aucune clé disponible pendant le développement). Leur logique est
+  vérifiée sans clé par `check-providers.mjs`, et leur forme d'appel suit la
+  documentation officielle ([file d'attente fal](https://docs.fal.ai/model-endpoints/queue),
+  [API Replicate](https://replicate.com/docs/reference/http)) — mais les **noms de
+  paramètres varient selon le modèle** choisi. Si un modèle refuse un paramètre,
+  ajustez `server/providers/fal.js` / `replicate.js` en vous aidant de
+  `check-providers.mjs`, qui affiche le corps exact envoyé.
+- Les modèles fal/Replicate ne produisent **ni audio ni texte** : la bande son
+  est une nappe locale et le texte est incrusté par ffmpeg.
 - Chaque vidéo Veo porte un **filigrane invisible SynthID**.
 - En mode « Texte généré par Veo », l'orthographe du texte affiché n'est pas
   garantie : préférez l'incrustation (mode par défaut) pour une accroche

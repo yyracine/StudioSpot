@@ -16,6 +16,7 @@ import {
   ASPECT_RATIOS,
   DURATIONS,
   HOST,
+  KEY_SOURCES,
   LIMITS,
   MODELS,
   OUTPUT_DIR,
@@ -27,16 +28,18 @@ import {
   UPLOAD_DIR,
   VIDEO_TYPES,
   findById,
-  getApiKey,
+  getKey,
   getOptions,
-  hasApiKey,
-  setApiKey,
+  hasKey,
+  providerIdForEnvVar,
+  setKey,
 } from './config.js';
 import { boldFontPath, ffmpegPath, run as runFfmpeg } from './ffmpeg.js';
 import { createJob, getJob, listJobs, publicView, subscribe, updateJob } from './jobs.js';
 import { runJob } from './pipeline.js';
-import { veoConfigured, verifyApiKey } from './veo.js';
-import { describePlan } from './prompts.js';
+import { PROVIDERS, getProvider, listProviders, resolveProvider } from './providers/index.js';
+import { suggestMessages } from './suggest.js';
+import { ProviderError } from './providers/http.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -76,6 +79,31 @@ const handleUpload = (req, res, next) =>
     res.status(400).json({ error: message });
   });
 
+/**
+ * Enregistre une cle dans .env pour les prochains demarrages.
+ * @returns {Promise<boolean>} true si la persistance a reussi
+ */
+async function persistKey(keyId, value) {
+  const envVar = KEY_SOURCES[keyId].envVars[0];
+  try {
+    const envPath = path.join(ROOT, '.env');
+    let content = existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';
+    const pattern = new RegExp(`^${envVar}=.*$`, 'm');
+
+    if (pattern.test(content)) {
+      content = content.replace(pattern, `${envVar}=${value}`);
+    } else {
+      content += `${!content || content.endsWith('\n') ? '' : '\n'}${envVar}=${value}\n`;
+    }
+
+    await writeFile(envPath, content, 'utf8');
+    return true;
+  } catch {
+    // La cle reste active en memoire meme si .env n'est pas inscriptible.
+    return false;
+  }
+}
+
 /* ------------------------------------------------------------------ *
  * Validation
  * ------------------------------------------------------------------ */
@@ -107,9 +135,13 @@ function readForm(req, { sourcePath = null } = {}) {
   const seedRaw = Number.parseInt(req.body.seed, 10);
   const seed = Number.isInteger(seedRaw) && seedRaw >= 0 ? seedRaw : null;
 
-  // `mode: 'demo'` force un rendu local : utilisé comme repli quand Veo refuse
-  // la requête (quota, accès), pour ne pas laisser l'utilisateur bloqué.
+  // `mode: 'demo'` force un rendu local : utilisé comme repli quand un
+  // fournisseur refuse la requête (quota, accès), pour ne pas laisser
+  // l'utilisateur bloqué.
   const demoRequested = req.body.mode === 'demo';
+
+  // Fournisseur demandé : identifiant reconnu, sinon null (choix automatique).
+  const providerId = getProvider(req.body.providerId)?.id || null;
 
   return {
     input: {
@@ -122,9 +154,9 @@ function readForm(req, { sourcePath = null } = {}) {
       aspectRatio,
       resolution,
       model: modelId,
+      providerId,
       seed,
       sourcePath,
-      useVeo: hasApiKey() && !demoRequested,
       demoRequested,
     },
     errors,
@@ -141,11 +173,20 @@ app.get('/api/health', (req, res) => {
   } catch {
     ffmpegOk = false;
   }
+
+  const active = resolveProvider();
   res.json({
     ok: true,
-    veo: veoConfigured(),
-    apiKey: hasApiKey(),
-    mode: veoConfigured() ? 'veo' : 'demo',
+    // « provider » dès qu'un moteur distant est utilisable, sinon rendu local.
+    mode: active ? 'provider' : 'demo',
+    provider: active ? { id: active.id, label: active.label } : null,
+    providers: listProviders(),
+    keys: Object.fromEntries(
+      Object.entries(KEY_SOURCES).map(([id, source]) => [
+        id,
+        { label: source.label, configured: hasKey(id), docsUrl: source.docsUrl },
+      ]),
+    ),
     ffmpeg: ffmpegOk,
     ffmpegPath: ffmpegPath(),
     font: boldFontPath(),
@@ -153,78 +194,142 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-app.get('/api/options', (req, res) => res.json(getOptions()));
+app.get('/api/options', (req, res) => res.json({ ...getOptions(), providers: listProviders() }));
 
-/** Enregistre la cle API Gemini (conservée cote serveur, jamais renvoyee). */
+/**
+ * Enregistre une cle de fournisseur et la persiste dans .env.
+ * Corps : { key, value } — `key` designe la source (gemini, fal, replicate).
+ */
 app.post('/api/settings/api-key', async (req, res) => {
-  const key = String(req.body?.apiKey || '').trim();
-  if (!key) return res.status(400).json({ error: 'Clé API vide.' });
+  const keyId = String(req.body?.key || req.body?.providerId || '').trim();
+  const value = String(req.body?.value ?? req.body?.apiKey ?? '').trim();
 
-  const previous = getApiKey();
-  setApiKey(key);
+  if (!(keyId in KEY_SOURCES)) {
+    return res.status(400).json({ error: `Source de clé inconnue : « ${keyId} ».` });
+  }
+  if (!value) return res.status(400).json({ error: 'Clé API vide.' });
 
-  // On ne rejette la cle que si Google la refuse explicitement : une erreur
-  // d'acces Veo (facturation, region) ne doit pas bloquer la saisie.
+  const previous = getKey(keyId);
+  setKey(keyId, value);
+
+  // Le fournisseur associé valide la clé lorsqu'il sait le faire (Veo/Gemini).
+  const owner = PROVIDERS.find((provider) => provider.keyProvider === keyId);
   let warning = null;
-  try {
-    await verifyApiKey();
-  } catch (err) {
-    if (/Clé API refusée/.test(err.message)) {
-      setApiKey(previous);
-      return res.status(400).json({ error: err.message, hint: err.hint, details: err.details });
+
+  if (typeof owner?.verifyKey === 'function') {
+    try {
+      await owner.verifyKey();
+    } catch (err) {
+      // On ne rejette que si le service refuse explicitement la cle : une erreur
+      // d'acces (facturation, region) ne doit pas bloquer la saisie.
+      if (/refusée/i.test(err.message)) {
+        setKey(keyId, previous);
+        return res.status(400).json({ error: err.message, hint: err.hint, details: err.details });
+      }
+      warning = err.details ? `${err.message} (${String(err.details).slice(0, 200)})` : err.message;
     }
-    warning = err.details ? `${err.message} (${String(err.details).slice(0, 200)})` : err.message;
   }
 
-  // Persiste la cle dans .env pour les prochains demarrages.
-  try {
-    const envPath = path.join(ROOT, '.env');
-    let content = existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';
-    if (/^GEMINI_API_KEY=/m.test(content)) {
-      content = content.replace(/^GEMINI_API_KEY=.*$/m, `GEMINI_API_KEY=${key}`);
-    } else {
-      content += `${!content || content.endsWith('\n') ? '' : '\n'}GEMINI_API_KEY=${key}\n`;
-    }
-    await writeFile(envPath, content, 'utf8');
-  } catch {
-    /* la cle reste active en memoire meme si .env n'est pas inscriptible */
-  }
-
-  res.json({ ok: true, veo: true, warning });
+  const persisted = await persistKey(keyId, value);
+  res.json({ ok: true, provider: keyId, persisted, warning });
 });
 
-/** Supprime la cle API de la memoire (mode demo). */
+/** Retire une cle de la memoire pour ce fournisseur. */
 app.post('/api/settings/api-key/clear', (req, res) => {
-  setApiKey('');
-  res.json({ ok: true, mode: 'demo' });
+  const keyId = String(req.body?.key || req.body?.providerId || '').trim();
+  if (!(keyId in KEY_SOURCES)) {
+    return res.status(400).json({ error: `Source de clé inconnue : « ${keyId} ».` });
+  }
+  setKey(keyId, '');
+  res.json({ ok: true, provider: keyId });
 });
 
-/** Test de cle sans enregistrement. */
+/** Teste une cle sans l'enregistrer. */
 app.post('/api/settings/api-key/test', async (req, res) => {
-  const key = String(req.body?.apiKey || '').trim();
-  const previous = getApiKey();
-  setApiKey(key);
+  const keyId = String(req.body?.key || req.body?.providerId || '').trim();
+  const value = String(req.body?.value ?? req.body?.apiKey ?? '').trim();
+
+  if (!(keyId in KEY_SOURCES)) {
+    return res.status(400).json({ error: `Source de clé inconnue : « ${keyId} ».` });
+  }
+
+  const owner = PROVIDERS.find((provider) => provider.keyProvider === keyId);
+  if (typeof owner?.verifyKey !== 'function') {
+    return res.json({
+      ok: true,
+      warning: 'Ce fournisseur ne permet pas de tester la clé sans lancer une génération.',
+    });
+  }
+
+  const previous = getKey(keyId);
+  setKey(keyId, value);
   try {
-    await verifyApiKey();
+    await owner.verifyKey();
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message, hint: err.hint, details: err.details });
   } finally {
-    setApiKey(previous);
+    setKey(keyId, previous);
   }
 });
 
-/** Estimation affichee avant lancement (nombre d'appels Veo, duree cible). */
+/** Suggestions de messages publicitaires (modele texte, gratuit). */
+app.post('/api/suggest-messages', async (req, res) => {
+  const videoType = findById(VIDEO_TYPES, req.body?.videoTypeId);
+  const ambiance = findById(AMBIANCES, req.body?.ambianceId);
+  try {
+    const result = await suggestMessages({
+      productName: req.body?.productName,
+      videoTypeId: videoType?.id,
+      videoTypeLabel: videoType?.label,
+      ambianceLabel: ambiance?.label,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message, hint: err.hint });
+  }
+});
+
+/** Estimation affichee avant lancement : plan reel du fournisseur retenu. */
 app.get('/api/plan', (req, res) => {
   const durationId = findById(DURATIONS, String(req.query.duration || ''))?.id || DURATIONS[1].id;
-  const modelId = findById(MODELS, String(req.query.model || ''))?.id || MODELS[0].id;
-  res.json(
-    describePlan({
-      durationId,
-      modelId,
-      resolution: findById(RESOLUTIONS, String(req.query.resolution || ''))?.id || '720p',
-    }),
-  );
+  const aspectRatio = findById(ASPECT_RATIOS, String(req.query.aspectRatio || ''))?.id || '16:9';
+  const resolution = findById(RESOLUTIONS, String(req.query.resolution || ''))?.id || '720p';
+
+  // `provider` absent = choix automatique ; `provider=demo` = rendu local imposé.
+  const requestedId = String(req.query.provider || '').trim();
+  const demoWanted = requestedId === 'demo' || String(req.query.mode || '') === 'demo';
+  const requested = demoWanted ? null : getProvider(requestedId);
+  const provider = demoWanted ? null : requested && requested.isConfigured() ? requested : resolveProvider();
+
+  if (!provider) {
+    const seconds = findById(DURATIONS, durationId)?.seconds || 8;
+    return res.json({
+      providerId: null,
+      providerLabel: 'Rendu local (démonstration)',
+      seconds,
+      calls: 0,
+      resolution: '720p',
+      note: 'Rendu local : animation de la photo et habillage, sans modèle distant.',
+      limitedTo: null,
+      available: false,
+    });
+  }
+
+  const plan = provider.buildPlan({
+    durationId,
+    aspectRatio: aspectRatio === 'auto' ? '16:9' : aspectRatio,
+    resolution,
+  });
+
+  res.json({
+    ...plan,
+    providerId: provider.id,
+    providerLabel: provider.label,
+    available: true,
+    nativeAudio: provider.capabilities.nativeAudio,
+    rendersText: provider.capabilities.rendersText,
+  });
 });
 
 /** Cree une tache de production. */
@@ -367,16 +472,22 @@ const slug = (value) =>
     .slice(0, 40);
 
 app.listen(PORT, HOST, () => {
-  const mode = veoConfigured() ? 'Veo (API Gemini)' : 'démo local (aucune clé API)';
+  const active = resolveProvider();
+  const configured = PROVIDERS.filter((provider) => provider.isConfigured());
+
   console.log('');
   console.log('  ▸ Animateur de Photos Produit');
   console.log(`    Interface   http://${HOST}:${PORT}`);
-  console.log(`    Mode        ${mode}`);
+  console.log(`    Moteur      ${active ? `${active.label} (${active.id})` : 'rendu local de démonstration'}`);
+  console.log(
+    `    Fournisseurs configurés : ${configured.length ? configured.map((p) => p.id).join(', ') : 'aucun'}`,
+  );
   console.log(`    ffmpeg      ${ffmpegPath()}`);
   console.log('');
-  if (!veoConfigured()) {
-    console.log('    Astuce : cliquez sur « Réglages » dans l’interface pour ajouter');
-    console.log('    votre clé API Gemini et activer la génération Veo.');
+
+  if (!active) {
+    console.log('    Astuce : cliquez sur « Réglages » dans l’interface pour ajouter une clé');
+    console.log('    (Gemini/Veo, fal.ai ou Replicate) et activer un vrai moteur de génération.');
     console.log('');
   }
 });

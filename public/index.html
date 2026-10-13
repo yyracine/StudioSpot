@@ -130,12 +130,14 @@
               <span class="counter"><span id="adMessageCount">0</span>/120</span>
             </label>
 
-            <div class="chips" id="messageSuggestions" aria-label="Suggestions de message">
-              <button type="button" class="chip">Nouveau ! -30% cette semaine</button>
-              <button type="button" class="chip">Livraison offerte dès 40 €</button>
-              <button type="button" class="chip">Édition limitée — stock réduit</button>
-              <button type="button" class="chip">Note 4,9/5 · 2 300 avis</button>
+            <div class="suggest-row">
+              <button type="button" class="ghost-btn small" id="suggestBtn">
+                Proposer des messages
+              </button>
+              <span class="muted small" id="suggestStatus"></span>
             </div>
+
+            <div class="chips" id="messageSuggestions" aria-label="Suggestions de message"></div>
           </div>
 
           <!-- 3. Mise en scene -->
@@ -183,6 +185,12 @@
 
             <div class="grid-2">
               <label class="field">
+                <span class="field-label">Moteur de génération</span>
+                <select id="provider" name="provider"></select>
+                <span class="field-hint" id="providerHint"></span>
+              </label>
+
+              <label class="field">
                 <span class="field-label">Cadrage</span>
                 <select id="aspectRatio" name="aspectRatio"></select>
                 <span class="field-hint" id="aspectRatioHint"></span>
@@ -194,7 +202,7 @@
                 <span class="field-hint" id="resolutionHint"></span>
               </label>
 
-              <label class="field">
+              <label class="field" id="veoModelField">
                 <span class="field-label">Modèle Veo</span>
                 <select id="model" name="model"></select>
                 <span class="field-hint" id="modelHint"></span>
@@ -319,22 +327,20 @@
         <h2>Réglages</h2>
 
         <div class="field">
-          <span class="field-label">Clé API Gemini</span>
-          <input type="password" id="apiKeyInput" placeholder="AIza…" autocomplete="off" spellcheck="false" />
-          <span class="field-hint">
-            Nécessaire pour Veo. Créez une clé sur
-            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>.
-            La clé reste sur ce serveur (fichier <code>.env</code>) et n'est jamais renvoyée au navigateur.
-          </span>
+          <span class="field-label">Clés API des moteurs de génération</span>
+          <p class="field-hint">
+            Une seule clé suffit : le premier moteur configuré est utilisé, et vous pouvez en choisir
+            un autre dans les options avancées. Les clés restent sur ce serveur (fichier
+            <code>.env</code>) et ne sont jamais renvoyées au navigateur.
+          </p>
+          <div class="key-rows" id="keyRows"></div>
         </div>
 
         <p class="muted small" id="settingsStatus"></p>
 
         <div class="dialog-actions">
-          <button type="button" class="ghost-btn" id="clearKeyBtn">Retirer la clé</button>
           <span class="spacer"></span>
           <button type="button" class="ghost-btn" id="closeSettingsBtn">Fermer</button>
-          <button type="button" class="cta small" id="saveKeyBtn">Enregistrer</button>
         </div>
 
         <div class="diag" id="diagBox"></div>

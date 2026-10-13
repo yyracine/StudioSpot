@@ -130,6 +130,9 @@ function buildSelects() {
   fill($('textMode'), o.textModes, o.defaults.textMode);
   fill($('aspectRatio'), o.aspectRatios, o.defaults.aspectRatio);
   fill($('resolution'), o.resolutions, o.defaults.resolution);
+  fillProviders();
+
+  renderStaticChips();
 
   $('uploadLimits').textContent = `JPEG, PNG ou WebP · ${Math.round(
     o.limits.uploadMaxBytes / 1048576,
@@ -138,6 +141,34 @@ function buildSelects() {
   $('adMessage').maxLength = o.limits.adMessageMax;
   $('productNameCount').nextSibling.textContent = `/${o.limits.productNameMax}`;
   $('adMessageCount').nextSibling.textContent = `/${o.limits.adMessageMax}`;
+}
+
+/**
+ * Liste des moteurs : les fournisseurs disponibles, plus le rendu local.
+ * Les fournisseurs sans clé restent visibles mais sont signalés comme non
+ * configurés — l'utilisateur voit ainsi ce qu'il peut activer.
+ */
+function fillProviders() {
+  const select = $('provider');
+  select.innerHTML = '';
+
+  for (const provider of state.options.providers || []) {
+    const option = document.createElement('option');
+    option.value = provider.id;
+    option.textContent = provider.configured ? provider.label : `${provider.label} — clé requise`;
+    option.disabled = !provider.configured;
+    select.append(option);
+  }
+
+  const local = document.createElement('option');
+  local.value = 'demo';
+  local.textContent = 'Rendu local (démonstration, sans IA)';
+  select.append(local);
+
+  // Sélection par défaut : le moteur réellement actif côté serveur,
+  // sinon le rendu local.
+  const active = state.health?.provider?.id;
+  select.value = active || 'demo';
 }
 
 function fill(select, items, defaultValue) {
@@ -150,6 +181,31 @@ function fill(select, items, defaultValue) {
     select.append(option);
   }
 }
+
+/** Suggestions de départ, remplacées par celles du modèle si on le demande. */
+const STATIC_CHIPS = [
+  'Nouveau ! -30% cette semaine',
+  'Livraison offerte dès 40 €',
+  'Édition limitée — stock réduit',
+  'Note 4,9/5 · 2 300 avis',
+];
+
+function renderChips(items) {
+  const container = $('messageSuggestions');
+  container.innerHTML = '';
+
+  for (const item of items) {
+    const text = typeof item === 'string' ? item : item.text;
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip';
+    chip.textContent = text;
+    if (typeof item === 'object' && item.angle) chip.title = item.angle;
+    container.append(chip);
+  }
+}
+
+const renderStaticChips = () => renderChips(STATIC_CHIPS);
 
 /* ==================================================================== *
  * État du serveur
@@ -168,16 +224,20 @@ function applyHealth() {
     return;
   }
 
-  if (health.mode === 'veo') {
+  if (health.mode === 'provider' && health.provider) {
     badge.classList.add('live');
-    text.textContent = 'Veo connecté';
+    text.textContent = health.provider.label;
   } else {
     badge.classList.add('demo');
     text.textContent = 'Mode démo local';
+
+    const missing = Object.values(health.keys || {}).filter((entry) => !entry.configured);
     notices.push({
       text:
-        'Aucune clé API Gemini : les vidéos sont rendues localement (démo) — animation Ken Burns, ' +
-        'habillage texte et nappe sonore. Ajoutez votre clé dans « Réglages » pour activer Veo.',
+        'Aucune clé de moteur configurée : les vidéos sont rendues localement (animation de la photo, ' +
+        'habillage texte et nappe sonore). Ouvrez « Réglages » pour ajouter une clé — Gemini/Veo, ' +
+        'fal.ai ou Replicate — et activer un vrai moteur de génération.' +
+        (missing.length ? ` Clés absentes : ${missing.map((entry) => entry.label).join(', ')}.` : ''),
       danger: false,
     });
   }
@@ -265,7 +325,7 @@ function wireStaticEvents() {
     });
   });
 
-  ['videoType', 'ambiance', 'duration', 'model', 'textMode', 'aspectRatio', 'resolution'].forEach(
+  ['videoType', 'ambiance', 'duration', 'model', 'textMode', 'aspectRatio', 'resolution', 'provider'].forEach(
     (id) => {
       $(id).addEventListener('change', () => {
         if (id === 'aspectRatio') updateStageAspect();
@@ -284,6 +344,8 @@ function wireStaticEvents() {
     $('adMessage').dispatchEvent(new Event('input'));
     $('adMessage').focus();
   });
+
+  $('suggestBtn').addEventListener('click', suggestMessages);
 
   $('productForm').addEventListener('submit', (event) => {
     event.preventDefault();
@@ -304,18 +366,58 @@ function wireStaticEvents() {
     }
   });
 
-  // Réglages
+  // Réglages : une ligne par fournisseur, construite dynamiquement.
   $('settingsBtn').addEventListener('click', () => {
     $('settingsStatus').textContent = '';
+    renderKeyRows();
     $('settingsDialog').showModal();
     loadDiagnostics();
   });
   $('closeSettingsBtn').addEventListener('click', () => $('settingsDialog').close());
-  $('saveKeyBtn').addEventListener('click', saveApiKey);
-  $('clearKeyBtn').addEventListener('click', clearApiKey);
+  $('keyRows').addEventListener('click', handleKeyAction);
 
   // Redimensionnement : l'aperçu garde les proportions de la vidéo finale
   window.addEventListener('resize', updateOverlayMetrics);
+}
+
+/**
+ * Demande des accroches publicitaires au modèle texte (gratuit).
+ * Sans clé Gemini, le serveur renvoie un repli local : l'utilisateur obtient
+ * toujours des propositions.
+ */
+async function suggestMessages() {
+  const button = $('suggestBtn');
+  const status = $('suggestStatus');
+  const productName = $('productName').value.trim();
+
+  if (!productName) {
+    status.textContent = 'Renseignez d’abord le nom du produit.';
+    $('productName').focus();
+    return;
+  }
+
+  button.disabled = true;
+  status.textContent = 'Recherche d’accroches…';
+
+  try {
+    const result = await api('/api/suggest-messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        productName,
+        videoTypeId: $('videoType').value,
+        ambianceId: $('ambiance').value,
+      }),
+    });
+
+    renderChips(result.suggestions);
+    status.textContent = result.provider?.startsWith('repli')
+      ? `Propositions hors ligne (${result.provider}).`
+      : `${result.suggestions.length} accroches proposées par ${result.provider}.`;
+  } catch (err) {
+    status.textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function setFile(file) {
@@ -447,7 +549,10 @@ function updateEstimate() {
   const duration = state.options.durations.find((item) => item.id === durationId);
   if (!duration) return;
 
-  $('durationHint').textContent = duration.note || '';
+  const providerId = $('provider').value;
+  const providerInfo = (state.options.providers || []).find((item) => item.id === providerId);
+  const isDemo = providerId === 'demo' || !providerInfo;
+
   $('videoTypeHint').textContent =
     state.options.videoTypes.find((item) => item.id === $('videoType').value)?.hint || '';
   $('ambianceHint').textContent =
@@ -457,30 +562,48 @@ function updateEstimate() {
   $('modelHint').textContent =
     $('model').value.includes('fast') ? 'Plus rapide, coût réduit.' : 'Rendu le plus abouti.';
   $('resolutionHint').textContent =
-    $('resolution').value === '1080p' ? 'Disponible pour les clips de 8 s.' : 'Le plus rapide à produire.';
+    $('resolution').value === '1080p' ? 'Vérifiez que le modèle choisi la supporte.' : 'Le plus rapide à produire.';
   $('aspectRatioHint').textContent =
     $('aspectRatio').value === 'auto'
       ? `Déduit de la photo : ${effectiveAspect() === '9:16' ? 'format vertical 9:16' : 'format paysage 16:9'}.`
       : 'Format imposé manuellement.';
 
-  // devis : nombre d'appels Veo et temps estimé
-  fetch(`/api/plan?duration=${encodeURIComponent(durationId)}&model=${encodeURIComponent($('model').value)}`)
+  // Le sélecteur de modèle Veo n'a de sens que pour Veo : les autres moteurs
+  // se configurent par variables d'environnement (FAL_MODEL, REPLICATE_MODEL).
+  $('veoModelField').hidden = providerId !== 'veo';
+  $('providerHint').textContent = isDemo
+    ? 'Animation locale : aucune IA, aucun coût, résultat immédiat.'
+    : providerInfo?.note || '';
+
+  // Le plan réel est calculé par le serveur, à partir du fournisseur retenu.
+  // `provider=demo` demande explicitement le rendu local (sinon le serveur
+  // choisirait le premier moteur disponible, et annoncerait son coût).
+  const query = new URLSearchParams({
+    duration: durationId,
+    provider: isDemo ? 'demo' : providerId,
+    aspectRatio: $('aspectRatio').value === 'auto' ? '16:9' : $('aspectRatio').value,
+    resolution: $('resolution').value,
+  });
+
+  fetch(`/api/plan?${query}`)
     .then((response) => response.json())
     .then((plan) => {
-      const calls = `${plan.calls} appel${plan.calls > 1 ? 's' : ''} Veo`;
-      const time = plan.calls > 1 ? '2 à 8 min' : '1 à 4 min';
+      const calls = plan.calls
+        ? `${plan.calls} appel${plan.calls > 1 ? 's' : ''} ${plan.providerLabel || ''}`.trim()
+        : 'aucun appel';
 
       $('planSummary').innerHTML =
         `<b>${plan.seconds} s</b> · ${plan.resolution} · ${calls}` +
-        (plan.extended ? ' · extension +7 s' : '') +
-        (plan.trimsTo ? ` · coupe à ${plan.trimsTo} s` : '');
+        (plan.limitedTo ? ` · <span class="warn-text">limité à ${plan.limitedTo} s</span>` : '');
 
-      $('estimate').textContent = state.health?.mode === 'veo'
-        ? `${calls} facturé${plan.calls > 1 ? 's' : ''} · production estimée ${time}`
-        : `Rendu local de démonstration · environ ${plan.seconds * 2} s`;
+      $('estimate').textContent = isDemo
+        ? `Rendu local · environ ${plan.seconds * 2} s de calcul, gratuit`
+        : `${calls} facturé${plan.calls > 1 ? 's' : ''} · production estimée ${
+            plan.calls > 1 ? '2 à 8 min' : '1 à 4 min'
+          }`;
     })
     .catch(() => {
-      $('planSummary').textContent = `${duration.seconds} s — ${duration.note}`;
+      $('planSummary').textContent = `${duration.seconds} s — ${duration.label}`;
     });
 }
 
@@ -512,6 +635,11 @@ async function startGeneration() {
   form.append('aspectRatio', $('aspectRatio').value);
   form.append('resolution', $('resolution').value);
   form.append('model', $('model').value);
+
+  // Le rendu local est demandé explicitement : il ne dépend d'aucune clé.
+  const providerId = $('provider').value;
+  if (providerId === 'demo') form.append('mode', 'demo');
+  else form.append('providerId', providerId);
 
   enterRunningState();
   logLine('Envoi de la photo au serveur…');
@@ -715,8 +843,8 @@ function showResult(job) {
 
   $('resultTitle').textContent = job.input.productName;
   const modeBadge = $('resultMode');
-  modeBadge.textContent = result.mode === 'veo' ? 'Veo' : 'Démo locale';
-  modeBadge.classList.toggle('success', result.mode === 'veo');
+  modeBadge.textContent = result.mode === 'provider' ? result.providerLabel : 'Démo locale';
+  modeBadge.classList.toggle('success', result.mode === 'provider');
 
   $('downloadBtn').href = result.downloadUrl;
 
@@ -727,9 +855,16 @@ function showResult(job) {
     ['Type', result.videoType],
     ['Audio', result.hasAudio ? result.audioLabel : 'Pas de son'],
     ['Texte', result.textMode],
+    ['Moteur', result.mode === 'provider' ? result.providerLabel : 'Rendu local'],
     ['Poids', formatBytes(result.sizeBytes)],
-    ['Moteur', result.mode === 'veo' ? 'Veo' : 'Rendu local'],
   ];
+
+  if (result.limitedTo) {
+    logLine(
+      `Durée limitée à ${result.limitedTo} s par le moteur choisi (${result.providerLabel}).`,
+      'warn',
+    );
+  }
 
   $('resultMeta').innerHTML = '';
   for (const [label, value] of meta) {
@@ -771,9 +906,9 @@ function showError(error) {
   $('stageTitle').textContent = 'Production interrompue';
   $('stageSubtitle').textContent = 'Corrigez le point signalé puis relancez la production.';
 
-  // Repli proposé uniquement quand un appel Veo était en jeu : l'utilisateur
+  // Repli proposé uniquement quand un moteur distant était en jeu : l'utilisateur
   // n'est jamais laissé sans solution (quota, accès, filtre de sécurité…).
-  const canFallback = state.health?.mode === 'veo' && Boolean(state.jobId);
+  const canFallback = state.health?.mode === 'provider' && Boolean(state.jobId);
   $('demoFallbackBtn').hidden = !canFallback;
   $('demoFallbackNote').hidden = !canFallback;
 }
@@ -827,47 +962,124 @@ function resetAll() {
  * Réglages
  * ==================================================================== */
 
-async function saveApiKey() {
-  const button = $('saveKeyBtn');
-  const status = $('settingsStatus');
-  const apiKey = $('apiKeyInput').value.trim();
+/**
+ * Construit une ligne par source de clé (Gemini, fal.ai, Replicate).
+ * Chaque ligne indique si la clé est déjà configurée et où l'obtenir.
+ */
+function renderKeyRows() {
+  const container = $('keyRows');
+  const sources = state.options.keySources || {};
+  container.innerHTML = '';
 
-  if (!apiKey) {
-    status.textContent = 'Saisissez une clé API.';
-    return;
+  for (const [id, source] of Object.entries(sources)) {
+    const row = document.createElement('div');
+    row.className = 'key-row';
+
+    const head = document.createElement('div');
+    head.className = 'key-head';
+
+    const name = document.createElement('strong');
+    name.textContent = source.label;
+
+    const state_ = document.createElement('span');
+    state_.className = `badge ${source.configured ? 'live' : 'subtle'}`;
+    state_.textContent = source.configured ? 'configurée' : 'absente';
+
+    const link = document.createElement('a');
+    link.href = source.docsUrl;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.className = 'key-link';
+    link.textContent = 'obtenir une clé';
+
+    head.append(name, state_, link);
+
+    const controls = document.createElement('div');
+    controls.className = 'key-controls';
+
+    const input = document.createElement('input');
+    input.type = 'password';
+    input.placeholder = source.placeholder || 'Collez la clé ici';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.dataset.key = id;
+
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'ghost-btn small';
+    save.textContent = source.configured ? 'Remplacer' : 'Enregistrer';
+    save.dataset.action = 'save';
+    save.dataset.key = id;
+
+    controls.append(input, save);
+
+    if (source.configured) {
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'ghost-btn small';
+      clear.textContent = 'Retirer';
+      clear.dataset.action = 'clear';
+      clear.dataset.key = id;
+      controls.append(clear);
+    }
+
+    row.append(head, controls);
+    container.append(row);
   }
+}
+
+/** Enregistre ou retire une clé, puis rafraîchit l'état de l'application. */
+async function handleKeyAction(event) {
+  const button = event.target.closest('button[data-action]');
+  if (!button) return;
+
+  const { action, key } = button.dataset;
+  const status = $('settingsStatus');
+  const input = $('keyRows').querySelector(`input[data-key="${key}"]`);
 
   button.disabled = true;
-  button.textContent = 'Vérification…';
-  status.textContent = 'Vérification de la clé auprès de Google…';
+  const label = button.textContent;
+  button.textContent = '…';
 
   try {
-    const result = await api('/api/settings/api-key', {
-      method: 'POST',
-      body: JSON.stringify({ apiKey }),
-    });
-    status.textContent = result.warning
-      ? `Clé enregistrée. Attention : ${result.warning}`
-      : 'Clé enregistrée : Veo est actif.';
-    $('apiKeyInput').value = '';
+    if (action === 'clear') {
+      await api('/api/settings/api-key/clear', {
+        method: 'POST',
+        body: JSON.stringify({ key }),
+      });
+      status.textContent = 'Clé retirée.';
+    } else {
+      const value = input?.value.trim();
+      if (!value) {
+        status.textContent = 'Collez d’abord une clé dans le champ.';
+        return;
+      }
+      status.textContent = 'Vérification…';
+      const result = await api('/api/settings/api-key', {
+        method: 'POST',
+        body: JSON.stringify({ key, value }),
+      });
+      status.textContent = result.warning
+        ? `Clé enregistrée, avec avertissement : ${result.warning}`
+        : result.persisted
+          ? 'Clé enregistrée et conservée dans .env.'
+          : 'Clé active pour cette session (le fichier .env n’a pas pu être écrit).';
+      if (input) input.value = '';
+    }
+
+    // L'état du serveur a changé : on rafraîchit options et santé.
     state.health = await api('/api/health');
+    state.options = await api('/api/options');
     applyHealth();
+    buildSelects();
     updateEstimate();
     loadDiagnostics();
   } catch (err) {
     status.textContent = err.message + (err.payload?.hint ? ` — ${err.payload.hint}` : '');
   } finally {
     button.disabled = false;
-    button.textContent = 'Enregistrer';
+    button.textContent = label;
   }
-}
-
-async function clearApiKey() {
-  await api('/api/settings/api-key/clear', { method: 'POST', body: JSON.stringify({}) });
-  $('settingsStatus').textContent = 'Clé retirée : retour au mode démo local.';
-  state.health = await api('/api/health');
-  applyHealth();
-  updateEstimate();
 }
 
 async function loadDiagnostics() {
