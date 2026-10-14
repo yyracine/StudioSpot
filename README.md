@@ -7,6 +7,10 @@ intégré, coupe à la seconde exacte, ambiance sonore ou silence total.
 
 Conçue pour le e-commerce et le marketing : vêtements, objets, tech.
 
+> **Reprise du projet ?** Lisez [`RESUME.md`](RESUME.md) : état exact du dépôt,
+> contraintes techniques de la machine, bugs déjà corrigés et limites non
+> vérifiées. C'est le document de passation.
+
 ---
 
 ## Sommaire
