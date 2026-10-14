@@ -67,22 +67,52 @@ export async function fetchJson(url, { method = 'GET', headers = {}, body, signa
     const message =
       data?.error?.message || data?.detail || data?.message || data?.raw || `HTTP ${response.status}`;
     const details = typeof message === 'string' ? message : JSON.stringify(message);
+    const haystack = `${details}`;
 
-    if (response.status === 401 || response.status === 403) {
-      throw new ProviderError('Clé API refusée par le service.', {
-        hint: 'Vérifiez la clé dans les réglages : elle est peut-être expirée ou sans droits.',
+    // Solde / crédits épuisés : le fournisseur renvoie souvent 401 ou 403, ce
+    // qui ferait croire à tort à une clé invalide. On nomme la vraie cause.
+    if (/exhausted balance|insufficient|balance|credit|top up|locked|billing|payment/i.test(haystack)) {
+      return new ProviderError('Crédits épuisés chez le fournisseur (la clé est valide).', {
+        hint:
+          'Votre compte n’a plus de solde : rechargez-le, ou choisissez un autre moteur dans les ' +
+          'options avancées, ou lancez un rendu local (gratuit).',
         details,
       });
     }
-    if (response.status === 402 || /insufficient|credit|balance|quota|billing/i.test(details)) {
-      throw new ProviderError('Crédits ou quota insuffisants chez le fournisseur.', {
-        hint: 'Rechargez votre compte ou changez de fournisseur dans les options avancées.',
+
+    if (response.status === 401 || response.status === 403) {
+      return new ProviderError('Accès refusé par le service (clé ou droits).', {
+        hint:
+          'Soit la clé est invalide ou expirée, soit le compte n’est pas autorisé à utiliser ce ' +
+          'modèle. Vérifiez la clé et l’état de votre compte chez le fournisseur.',
+        details,
+      });
+    }
+    if (response.status === 402) {
+      return new ProviderError('Paiement requis par le fournisseur.', {
+        hint: 'Rechargez votre compte ou changez de moteur dans les options avancées.',
         details,
       });
     }
     if (response.status === 429) {
-      throw new ProviderError('Le fournisseur limite le débit (429).', {
+      return new ProviderError('Le fournisseur limite le débit (429).', {
         hint: 'Patientez une minute, ou réduisez la cadence des générations.',
+        details,
+      });
+    }
+    if (response.status === 404) {
+      return new ProviderError('Modèle introuvable chez le fournisseur (HTTP 404).', {
+        hint:
+          'L’identifiant du modèle configuré n’existe pas ou n’est plus disponible. Corrigez ' +
+          'FAL_MODEL / REPLICATE_MODEL dans .env, puis vérifiez avec scripts/check-provider-schema.mjs.',
+        details,
+      });
+    }
+    if (response.status === 422 || /extra fields|not permitted|invalid input|unexpected keyword/i.test(haystack)) {
+      return new ProviderError('Le fournisseur a refusé les paramètres envoyés (HTTP 422).', {
+        hint:
+          'Un champ envoyé n’existe pas pour ce modèle. Lancez scripts/check-provider-schema.mjs : ' +
+          'il confronte notre requête au schéma officiel du fournisseur.',
         details,
       });
     }

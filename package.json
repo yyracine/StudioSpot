@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node scripts/smoke-test.mjs"
+    "test": "node scripts/smoke-test.mjs && node scripts/check-ui-hidden.mjs",
+    "test:catalog": "node scripts/check-catalog.mjs",
+    "test:providers": "node scripts/check-providers.mjs && node scripts/check-provider-schema.mjs"
   },
   "engines": {
     "node": ">=20"

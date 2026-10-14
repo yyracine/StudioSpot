@@ -427,7 +427,16 @@ node scripts/smoke-test.mjs --veo               # vrai appel Veo (payant, consom
 node scripts/check-providers.mjs                # vérifie les 3 adaptateurs SANS clé
 node scripts/check-provider-schema.mjs          # confronte nos requêtes au schéma officiel fal
 node scripts/check-catalog.mjs                  # vérifie les 11 types × 11 ambiances
+node scripts/check-ui-hidden.mjs                # conflits entre l'attribut hidden et le CSS
 node scripts/probe-key.mjs                      # ce que votre clé Gemini peut réellement appeler
+```
+
+`npm test` enchaîne le test de bout en bout **puis** le contrôle des conflits
+`hidden`/CSS. Les autres scripts s'appellent séparément :
+
+```bash
+npm run test:catalog      # 11 types × 11 ambiances
+npm run test:providers    # adaptateurs + schéma officiel fal
 ```
 
 **`npm test`** (bout en bout) :
@@ -496,6 +505,7 @@ scripts/
   check-providers.mjs        vérifie les adaptateurs sans clé
   check-provider-schema.mjs  confronte nos requêtes au schéma officiel fal
   check-catalog.mjs          vérifie les 11 types × 11 ambiances
+  check-ui-hidden.mjs        conflits attribut hidden / CSS
   probe-key.mjs              ce que la clé Gemini peut réellement appeler
 ```
 
@@ -509,7 +519,9 @@ scripts/
 | « Clé API refusée par Google » / par le service | Clé erronée ou expirée : régénérez-la chez le fournisseur. |
 | **« Veo a refusé la requête : quota ou accès indisponible (429) »** | Cause la plus fréquente : **le projet Google n'est pas sur un palier payant**. Veo est un modèle *preview* qui exige un compte de facturation actif (palier **Tier 1** : « link an active billing account »). Vérifiez vos limites réelles sur <https://aistudio.google.com/rate-limit> : **si Veo y affiche 0, il faut activer la facturation**. Le message « check your plan and billing details » désigne le palier, pas une panne. Lancez `node scripts/probe-key.mjs` pour confirmer. |
 | Bloqué par ce 429 et vous voulez avancer tout de suite | Deux solutions : cliquez sur **« Relancer en mode démo local »**, ou **ajoutez une clé fal.ai / Replicate** (crédits offerts) et choisissez ce moteur dans les options avancées. |
-| « Crédits ou quota insuffisants chez le fournisseur » | Rechargez votre compte fal.ai / Replicate, ou changez de moteur. |
+| La vidéo ne s'affiche pas après une production réussie | Bug corrigé : une règle CSS d'auteur (`display: flex`) écrasait le `[hidden]` du navigateur, si bien que le message « Votre vidéo apparaîtra ici » **recouvrait** la vidéo pourtant générée. Un garde-fou global `[hidden] { display: none !important }` est en place, et `npm test` vérifie ce conflit. Si vous voyez encore ce symptôme, forcez le rechargement de la page (Ctrl+F5). |
+| Le champ « Modèle Veo » reste affiché avec un autre moteur | Bug corrigé (même cause que ci-dessus). |
+| « Crédits épuisés chez le fournisseur (la clé est valide) » | Votre compte fal.ai / Replicate n'a plus de solde. fal renvoie alors un 401 avec « Exhausted balance », ce qui ressemble à une clé invalide : ce n'est pas le cas. Rechargez le compte, changez de moteur, ou lancez un rendu local. |
 | La vidéo ne fait que 6,25 s alors que j'ai demandé 15 s | Le modèle fal `wan-i2v` est plafonné à 100 images, soit 6,25 s : c'est annoncé dans le plan avant lancement. Utilisez Veo (extension +7 s) pour atteindre exactement 15 s. |
 | Le texte n'est pas celui que j'ai écrit | Vous utilisez « Texte généré par Veo » : la restitution du texte par le modèle n'est pas garantie. Choisissez « Incrustation nette », où ffmpeg écrit le texte exact. |
 | La musique ne correspond pas à une vraie bande son | Avec fal.ai / Replicate, aucune IA ne produit l'audio : c'est une nappe locale de ffmpeg. Utilisez Veo (audio natif) ou remplacez la piste en montage. |

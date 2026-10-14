@@ -31,6 +31,19 @@
   box-sizing: border-box;
 }
 
+/**
+ * L'attribut `hidden` doit TOUJOURS gagner.
+ *
+ * Le navigateur applique `[hidden] { display: none }`, mais une simple règle
+ * d'auteur comme `.stage-placeholder { display: flex }` l'écrase : l'élément
+ * reste alors visible malgré `element.hidden = true`. C'est exactement ce qui
+ * faisait que le placeholder « Votre vidéo apparaîtra ici » recouvrait la vidéo
+ * pourtant produite avec succès.
+ */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -710,10 +723,14 @@ select:hover {
   overflow: hidden;
 }
 
+/* Vidéo verticale : hauteur définie, donc largeur déduite du ratio.
+   Avec `width: auto` et sans hauteur definie, l'element se reduisait a sa
+   taille de contenu — dans une grille centree, cela pouvait l'effondrer. */
 .stage-media.portrait {
   aspect-ratio: 9 / 16;
-  max-height: 66vh;
+  height: min(66vh, 40rem);
   width: auto;
+  max-width: 100%;
   margin: 0 auto;
   justify-self: center;
 }
