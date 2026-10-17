@@ -70,7 +70,7 @@ const results = {
   }),
 };
 
-console.log('\nVidéo (Veo) : non sondée ici — testez depuis l’application.\n');
+console.log('\nGénération vidéo : dépend du fournisseur choisi, non sondée ici.\n');
 
 console.log('Interprétation :');
 if (results.texte && !results.image) {
@@ -83,8 +83,8 @@ if (results.texte && !results.image) {
   );
 } else if (results.texte && results.image) {
   console.log(
-    '   Texte et image fonctionnent : seul Veo nécessite un palier payant.\n' +
-      '   Vous pouvez déjà utiliser gratuitement les modèles texte et image.',
+    '   Texte et image fonctionnent avec cette clé Google.\n' +
+      '   Elle sert ici aux suggestions de messages, pas à la génération vidéo.',
   );
 } else {
   console.log('   La clé semble inutilisable : vérifiez-la dans Google AI Studio.');

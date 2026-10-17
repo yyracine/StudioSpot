@@ -189,7 +189,7 @@ export async function probe(file, { cwd, logPath }) {
 
 /**
  * Normalise la photo source : orientation, taille raisonnable, JPEG qualite.
- * On evite ainsi d'envoyer a Veo des images trop lourdes ou dans un format
+ * On evite ainsi d'envoyer au moteur des images trop lourdes ou dans un format
  * exotique.
  *
  * `src` peut etre hors du dossier de travail (photo televersee) : on le passe
@@ -486,7 +486,8 @@ function demoAudioSource(ambiance, seconds, fps = 44100) {
 /**
  * Rend une video publicitaire localement (Ken Burns + habillage + nappe sonore).
  * Utilise quand aucune cle API n'est disponible : l'application reste
- * completement testable, et l'habillage texte est identique a la version Veo.
+ * completement testable, et l'habillage texte est identique a celui applique
+ * aux videos issues d'un moteur distant.
  */
 export async function renderDemoVideo({
   imagePath,

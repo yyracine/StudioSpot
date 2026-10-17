@@ -92,9 +92,9 @@ export async function runJob(job) {
 
     /* ---------------- habillage : cohérence avec le moteur ---------------- */
     // Un moteur qui ne dessine pas de texte ne peut pas honorer le mode « texte
-    // généré par Veo » : on bascule sur l'incrustation ffmpeg, qui reste nette.
+    // généré par le modèle » : on bascule sur l'incrustation ffmpeg, qui reste nette.
     let effectiveTextMode = textMode;
-    if (textMode.id === 'veo' && provider && !provider.capabilities.rendersText) {
+    if (textMode.id === 'model' && provider && !provider.capabilities.rendersText) {
       effectiveTextMode = findById(TEXT_MODES, 'overlay') || textMode;
       logJob(
         job.id,
@@ -175,7 +175,6 @@ export async function runJob(job) {
         prompt: mainPrompt,
         plan,
         config,
-        model: job.input.model,
         outputPath: rawMain,
         stageLabel: `${provider.shortLabel} génère la vidéo`,
         onProgress: ({ elapsedMs }) =>
@@ -203,7 +202,6 @@ export async function runJob(job) {
           previousRef,
           prompt: extensionPrompt,
           plan,
-          model: job.input.model,
           outputPath: extended,
           stageLabel: `${provider.shortLabel} prolonge la scène`,
           onProgress: ({ elapsedMs }) =>
@@ -306,7 +304,9 @@ export async function runJob(job) {
       videoType: videoType.label,
       ambiance: ambiance.label,
       textMode: effectiveTextMode.label,
-      provider: provider ? { id: provider.id, label: provider.label, model: job.input.model } : { id: 'demo', label: 'Rendu local' },
+      provider: provider
+        ? { id: provider.id, label: provider.label, model: configuredModel(provider.id) }
+        : { id: 'demo', label: 'Rendu local' },
       aspectRatio,
       resolution: plan.resolution,
       targetSeconds: duration.seconds,
@@ -339,7 +339,7 @@ export async function runJob(job) {
       mode: demo ? 'demo' : 'provider',
       providerId: provider?.id || 'demo',
       providerLabel: provider?.label || 'Rendu local (démo)',
-      model: demo ? 'rendu local' : job.input.model,
+      model: provider ? configuredModel(provider.id) : 'rendu local',
       videoType: videoType.label,
       ambiance: ambiance.label,
       textMode: effectiveTextMode.label,
@@ -398,6 +398,16 @@ function resolveAspectRatio(requested, sourceInfo) {
   if (requested === '16:9' || requested === '9:16') return requested;
   if (!sourceInfo?.width || !sourceInfo?.height) return '16:9';
   return sourceInfo.width > sourceInfo.height ? '16:9' : '9:16';
+}
+
+/**
+ * Modèle réellement utilisé par un fournisseur à catalogue : il vient de
+ * l'environnement (FAL_MODEL / REPLICATE_MODEL), pas du formulaire.
+ */
+function configuredModel(providerId) {
+  if (providerId === 'fal') return process.env.FAL_MODEL || 'fal-ai/wan-i2v';
+  if (providerId === 'replicate') return process.env.REPLICATE_MODEL || 'wan-video/wan-2.2-i2v-fast';
+  return 'modèle par défaut';
 }
 
 const formatElapsed = (seconds) =>

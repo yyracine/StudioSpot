@@ -18,7 +18,6 @@ import {
   HOST,
   KEY_SOURCES,
   LIMITS,
-  MODELS,
   OUTPUT_DIR,
   PORT,
   PUBLIC_DIR,
@@ -31,9 +30,9 @@ import {
   getKey,
   getOptions,
   hasKey,
-  providerIdForEnvVar,
   setKey,
 } from './config.js';
+import { acceptedFormats, detectKeySource } from './api-keys.js';
 import { boldFontPath, ffmpegPath, run as runFfmpeg } from './ffmpeg.js';
 import { createJob, getJob, listJobs, publicView, subscribe, updateJob } from './jobs.js';
 import { runJob } from './pipeline.js';
@@ -121,14 +120,13 @@ function readForm(req, { sourcePath = null } = {}) {
 
   const errors = [];
   if (!productName) errors.push('Le nom du produit est obligatoire.');
-  if (!adMessage && textModeId === 'veo') {
-    errors.push('Le message publicitaire est obligatoire pour un texte généré par Veo.');
+  if (!adMessage && textModeId === 'model') {
+    errors.push('Le message publicitaire est obligatoire pour un texte généré par le modèle.');
   }
 
   const videoTypeId = findById(VIDEO_TYPES, req.body.videoTypeId)?.id || VIDEO_TYPES[0].id;
   const ambianceId = findById(AMBIANCES, req.body.ambianceId)?.id || AMBIANCES[0].id;
   const durationId = findById(DURATIONS, req.body.durationId)?.id || DURATIONS[1].id;
-  const modelId = findById(MODELS, req.body.model)?.id || MODELS[0].id;
   const aspectRatio = findById(ASPECT_RATIOS, req.body.aspectRatio)?.id || 'auto';
   const resolution = findById(RESOLUTIONS, req.body.resolution)?.id || '720p';
 
@@ -153,7 +151,6 @@ function readForm(req, { sourcePath = null } = {}) {
       textModeId,
       aspectRatio,
       resolution,
-      model: modelId,
       providerId,
       seed,
       sourcePath,
@@ -184,7 +181,12 @@ app.get('/api/health', (req, res) => {
     keys: Object.fromEntries(
       Object.entries(KEY_SOURCES).map(([id, source]) => [
         id,
-        { label: source.label, configured: hasKey(id), docsUrl: source.docsUrl },
+        {
+          label: source.label,
+          purpose: source.purpose,
+          configured: hasKey(id),
+          docsUrl: source.docsUrl,
+        },
       ]),
     ),
     ffmpeg: ffmpegOk,
@@ -194,82 +196,105 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-app.get('/api/options', (req, res) => res.json({ ...getOptions(), providers: listProviders() }));
+app.get('/api/options', (req, res) =>
+  res.json({ ...getOptions(), providers: listProviders(), keyFormats: acceptedFormats() }),
+);
 
 /**
- * Enregistre une cle de fournisseur et la persiste dans .env.
- * Corps : { key, value } — `key` designe la source (gemini, fal, replicate).
+ * Enregistre LA clé collée par l'utilisateur.
+ *
+ * Aucun fournisseur à choisir : la forme de la clé détermine à qui elle
+ * appartient (voir server/api-keys.js). Corps : { value }.
  */
-app.post('/api/settings/api-key', async (req, res) => {
-  const keyId = String(req.body?.key || req.body?.providerId || '').trim();
+app.post('/api/settings/key', async (req, res) => {
   const value = String(req.body?.value ?? req.body?.apiKey ?? '').trim();
+  if (!value) return res.status(400).json({ error: 'Clé vide.' });
 
-  if (!(keyId in KEY_SOURCES)) {
-    return res.status(400).json({ error: `Source de clé inconnue : « ${keyId} ».` });
+  const detected = detectKeySource(value);
+  if (!detected) {
+    return res.status(422).json({
+      error: 'Format de clé non reconnu.',
+      hint: `Formes acceptées : ${acceptedFormats()
+        .map((format) => `${format.label} (${format.describe})`)
+        .join(' · ')}.`,
+      formats: acceptedFormats(),
+    });
   }
-  if (!value) return res.status(400).json({ error: 'Clé API vide.' });
 
-  const previous = getKey(keyId);
-  setKey(keyId, value);
+  const { source, key } = detected;
+  const previous = getKey(source);
+  setKey(source, key);
 
-  // Le fournisseur associé valide la clé lorsqu'il sait le faire (Veo/Gemini).
-  const owner = PROVIDERS.find((provider) => provider.keyProvider === keyId);
+  // Le fournisseur associé valide la clé lorsqu'il sait le faire.
+  const owner = PROVIDERS.find((provider) => provider.keyProvider === source);
   let warning = null;
 
   if (typeof owner?.verifyKey === 'function') {
     try {
       await owner.verifyKey();
     } catch (err) {
-      // On ne rejette que si le service refuse explicitement la cle : une erreur
-      // d'acces (facturation, region) ne doit pas bloquer la saisie.
+      // On ne rejette que si le service refuse explicitement la clé : une erreur
+      // d'accès (solde, droits) ne doit pas empêcher de la saisir.
       if (/refusée/i.test(err.message)) {
-        setKey(keyId, previous);
+        setKey(source, previous);
         return res.status(400).json({ error: err.message, hint: err.hint, details: err.details });
       }
       warning = err.details ? `${err.message} (${String(err.details).slice(0, 200)})` : err.message;
     }
   }
 
-  const persisted = await persistKey(keyId, value);
-  res.json({ ok: true, provider: keyId, persisted, warning });
+  const persisted = await persistKey(source, key);
+  res.json({
+    ok: true,
+    source,
+    label: KEY_SOURCES[source].label,
+    purpose: KEY_SOURCES[source].purpose,
+    persisted,
+    warning,
+  });
 });
 
-/** Retire une cle de la memoire pour ce fournisseur. */
-app.post('/api/settings/api-key/clear', (req, res) => {
-  const keyId = String(req.body?.key || req.body?.providerId || '').trim();
-  if (!(keyId in KEY_SOURCES)) {
-    return res.status(400).json({ error: `Source de clé inconnue : « ${keyId} ».` });
+/** Retire la clé d'un fournisseur. Corps : { source }. */
+app.post('/api/settings/key/clear', (req, res) => {
+  const source = String(req.body?.source || req.body?.key || '').trim();
+  if (!(source in KEY_SOURCES)) {
+    return res.status(400).json({ error: `Source de clé inconnue : « ${source} ».` });
   }
-  setKey(keyId, '');
-  res.json({ ok: true, provider: keyId });
+  setKey(source, '');
+  res.json({ ok: true, source });
 });
 
-/** Teste une cle sans l'enregistrer. */
-app.post('/api/settings/api-key/test', async (req, res) => {
-  const keyId = String(req.body?.key || req.body?.providerId || '').trim();
+/** Teste une clé sans l'enregistrer. Corps : { value }. */
+app.post('/api/settings/key/test', async (req, res) => {
   const value = String(req.body?.value ?? req.body?.apiKey ?? '').trim();
+  const detected = detectKeySource(value);
 
-  if (!(keyId in KEY_SOURCES)) {
-    return res.status(400).json({ error: `Source de clé inconnue : « ${keyId} ».` });
+  if (!detected) {
+    return res.status(422).json({
+      error: 'Format de clé non reconnu.',
+      formats: acceptedFormats(),
+    });
   }
 
-  const owner = PROVIDERS.find((provider) => provider.keyProvider === keyId);
+  const owner = PROVIDERS.find((provider) => provider.keyProvider === detected.source);
   if (typeof owner?.verifyKey !== 'function') {
     return res.json({
       ok: true,
+      source: detected.source,
+      label: detected.label,
       warning: 'Ce fournisseur ne permet pas de tester la clé sans lancer une génération.',
     });
   }
 
-  const previous = getKey(keyId);
-  setKey(keyId, value);
+  const previous = getKey(detected.source);
+  setKey(detected.source, detected.key);
   try {
     await owner.verifyKey();
-    res.json({ ok: true });
+    res.json({ ok: true, source: detected.source, label: detected.label });
   } catch (err) {
     res.status(400).json({ error: err.message, hint: err.hint, details: err.details });
   } finally {
-    setKey(keyId, previous);
+    setKey(detected.source, previous);
   }
 });
 
@@ -409,7 +434,7 @@ app.get('/api/jobs/:id/meta', (req, res) => {
 });
 
 /** Relance une production a partir de la meme photo.
- *  Chaque appel Veo est facture : l'interface demande confirmation.
+ *  Chaque appel au moteur est facture : l'interface demande confirmation.
  */
 app.post('/api/jobs/:id/retry', async (req, res) => {
   const previous = getJob(req.params.id);
@@ -486,8 +511,8 @@ app.listen(PORT, HOST, () => {
   console.log('');
 
   if (!active) {
-    console.log('    Astuce : cliquez sur « Réglages » dans l’interface pour ajouter une clé');
-    console.log('    (Gemini/Veo, fal.ai ou Replicate) et activer un vrai moteur de génération.');
+    console.log('    Astuce : cliquez sur « Réglages » dans l’interface, puis collez la clé API');
+    console.log('    de votre fournisseur (elle est reconnue automatiquement).');
     console.log('');
   }
 });

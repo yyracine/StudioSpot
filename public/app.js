@@ -13,7 +13,7 @@ const $ = (id) => document.getElementById(id);
 const PLACEHOLDER_HTML = $('stagePlaceholder').innerHTML;
 const BUSY_HTML =
   '<span class="spinner" aria-hidden="true"></span>' +
-  '<strong>Veo travaille…</strong>' +
+  '<strong>Le moteur travaille…</strong>' +
   '<span class="muted small">Vous pouvez laisser cet onglet ouvert, la production continue.</span>';
 
 const state = {
@@ -126,7 +126,6 @@ function buildSelects() {
   fill($('videoType'), o.videoTypes, o.defaults.videoType);
   fill($('ambiance'), o.ambiances, o.defaults.ambiance);
   fill($('duration'), o.durations, o.defaults.duration);
-  fill($('model'), o.models, o.defaults.model);
   fill($('textMode'), o.textModes, o.defaults.textMode);
   fill($('aspectRatio'), o.aspectRatios, o.defaults.aspectRatio);
   fill($('resolution'), o.resolutions, o.defaults.resolution);
@@ -235,8 +234,8 @@ function applyHealth() {
     notices.push({
       text:
         'Aucune clé de moteur configurée : les vidéos sont rendues localement (animation de la photo, ' +
-        'habillage texte et nappe sonore). Ouvrez « Réglages » pour ajouter une clé — Gemini/Veo, ' +
-        'fal.ai ou Replicate — et activer un vrai moteur de génération.' +
+        'habillage texte et nappe sonore). Ouvrez « Réglages » et collez la clé API de votre choix ' +
+        'pour activer un vrai moteur de génération.' +
         (missing.length ? ` Clés absentes : ${missing.map((entry) => entry.label).join(', ')}.` : ''),
       danger: false,
     });
@@ -325,7 +324,7 @@ function wireStaticEvents() {
     });
   });
 
-  ['videoType', 'ambiance', 'duration', 'model', 'textMode', 'aspectRatio', 'resolution', 'provider'].forEach(
+  ['videoType', 'ambiance', 'duration', 'textMode', 'aspectRatio', 'resolution', 'provider'].forEach(
     (id) => {
       $(id).addEventListener('change', () => {
         if (id === 'aspectRatio') updateStageAspect();
@@ -366,15 +365,26 @@ function wireStaticEvents() {
     }
   });
 
-  // Réglages : une ligne par fournisseur, construite dynamiquement.
+  // Réglages : un seul champ de clé, plus la liste des clés déjà enregistrées.
   $('settingsBtn').addEventListener('click', () => {
     $('settingsStatus').textContent = '';
+    $('apiKeyInput').value = '';
+    renderKeyFormats();
     renderKeyRows();
     $('settingsDialog').showModal();
     loadDiagnostics();
   });
   $('closeSettingsBtn').addEventListener('click', () => $('settingsDialog').close());
-  $('keyRows').addEventListener('click', handleKeyAction);
+  $('saveKeyBtn').addEventListener('click', savePastedKey);
+  $('apiKeyInput').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      savePastedKey();
+    }
+  });
+  // Retour visuel pendant la saisie : la clé est reconnue avant même d'être envoyée.
+  $('apiKeyInput').addEventListener('input', previewKeyDetection);
+  $('keyRows').addEventListener('click', removeKey);
 
   // Redimensionnement : l'aperçu garde les proportions de la vidéo finale
   window.addEventListener('resize', updateOverlayMetrics);
@@ -559,18 +569,21 @@ function updateEstimate() {
     state.options.ambiances.find((item) => item.id === $('ambiance').value)?.hint || '';
   $('textModeHint').textContent =
     state.options.textModes.find((item) => item.id === $('textMode').value)?.hint || '';
-  $('modelHint').textContent =
-    $('model').value.includes('fast') ? 'Plus rapide, coût réduit.' : 'Rendu le plus abouti.';
   $('resolutionHint').textContent =
-    $('resolution').value === '1080p' ? 'Vérifiez que le modèle choisi la supporte.' : 'Le plus rapide à produire.';
+    $('resolution').value === '1080p' ? 'Vérifiez que le moteur choisi la supporte.' : 'Le plus rapide à produire.';
   $('aspectRatioHint').textContent =
     $('aspectRatio').value === 'auto'
       ? `Déduit de la photo : ${effectiveAspect() === '9:16' ? 'format vertical 9:16' : 'format paysage 16:9'}.`
       : 'Format imposé manuellement.';
 
-  // Le sélecteur de modèle Veo n'a de sens que pour Veo : les autres moteurs
-  // se configurent par variables d'environnement (FAL_MODEL, REPLICATE_MODEL).
-  $('veoModelField').hidden = providerId !== 'veo';
+  // Le modèle vient de l'environnement du serveur (FAL_MODEL / REPLICATE_MODEL) :
+  // on l'affiche pour information, sans le rendre modifiable.
+  const providerModel = state.options.providerModels?.[providerId];
+  $('modelField').hidden = !providerModel;
+  $('modelHint').textContent = providerModel
+    ? `${providerModel} — réglable via la variable ${providerId === 'fal' ? 'FAL_MODEL' : 'REPLICATE_MODEL'}.`
+    : '';
+
   $('providerHint').textContent = isDemo
     ? 'Animation locale : aucune IA, aucun coût, résultat immédiat.'
     : providerInfo?.note || '';
@@ -634,7 +647,6 @@ async function startGeneration() {
   form.append('textModeId', $('textMode').value);
   form.append('aspectRatio', $('aspectRatio').value);
   form.append('resolution', $('resolution').value);
-  form.append('model', $('model').value);
 
   // Le rendu local est demandé explicitement : il ne dépend d'aucune clé.
   const providerId = $('provider').value;
@@ -658,7 +670,7 @@ async function startGeneration() {
 /**
  * Relance la production avec les mêmes réglages.
  * @param {{mode?: 'demo'}} [options] `mode: 'demo'` force un rendu local sans
- *   appel Veo — utilisé comme repli quand Veo refuse la requête.
+ *   appel au moteur — utilisé comme repli quand celui-ci refuse la requête.
  */
 async function regenerate(options = {}) {
   if (state.running || !state.jobId) return;
@@ -669,7 +681,7 @@ async function regenerate(options = {}) {
   const demo = options.mode === 'demo';
 
   enterRunningState();
-  logLine(demo ? 'Relance en mode démo local (sans Veo)…' : 'Nouvelle tentative…');
+  logLine(demo ? 'Relance en mode démo local (sans moteur)…' : 'Nouvelle tentative…');
 
   try {
     const { job } = await api(`/api/jobs/${previousId}/retry`, {
@@ -691,7 +703,7 @@ function enterRunningState() {
   state.running = true;
   state.startedAt = Date.now();
   state.jobId = null;
-  state.baseDetail = 'Veo peut mettre de 1 à 6 minutes selon la charge des serveurs.';
+  state.baseDetail = 'Le moteur peut mettre de 1 à 6 minutes selon la charge des serveurs.';
 
   $('progressZone').hidden = false;
   $('resultZone').hidden = true;
@@ -963,15 +975,66 @@ function resetAll() {
  * ==================================================================== */
 
 /**
- * Construit une ligne par source de clé (Gemini, fal.ai, Replicate).
- * Chaque ligne indique si la clé est déjà configurée et où l'obtenir.
+ * Affiche les formes de clés acceptées.
+ * L'utilisateur n'a pas à choisir un fournisseur : il voit simplement ce qui
+ * sera reconnu, avec un lien pour obtenir chaque type de clé.
  */
+function renderKeyFormats() {
+  const container = $('keyFormatsList');
+  const formats = state.options.keyFormats || [];
+  container.innerHTML = '';
+
+  for (const format of formats) {
+    const row = document.createElement('div');
+    row.className = 'key-row';
+
+    const head = document.createElement('div');
+    head.className = 'key-head';
+
+    const name = document.createElement('strong');
+    name.textContent = format.label;
+
+    const purpose = document.createElement('span');
+    purpose.className = 'muted small';
+    purpose.textContent = format.purpose || '';
+
+    if (format.docsUrl) {
+      const link = document.createElement('a');
+      link.href = format.docsUrl;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.className = 'key-link';
+      link.textContent = 'obtenir une clé';
+      head.append(name, purpose, link);
+    } else {
+      head.append(name, purpose);
+    }
+
+    const rule = document.createElement('p');
+    rule.className = 'field-hint';
+    rule.textContent = `Reconnue si elle ${format.describe}.`;
+
+    row.append(head, rule);
+    container.append(row);
+  }
+}
+
+/** Liste les clés déjà enregistrées, avec un bouton pour les retirer. */
 function renderKeyRows() {
   const container = $('keyRows');
   const sources = state.options.keySources || {};
+  const configured = Object.entries(sources).filter(([, source]) => source.configured);
   container.innerHTML = '';
 
-  for (const [id, source] of Object.entries(sources)) {
+  if (!configured.length) {
+    const empty = document.createElement('p');
+    empty.className = 'muted small';
+    empty.textContent = 'Aucune clé enregistrée pour le moment.';
+    container.append(empty);
+    return;
+  }
+
+  for (const [id, source] of configured) {
     const row = document.createElement('div');
     row.className = 'key-row';
 
@@ -981,118 +1044,153 @@ function renderKeyRows() {
     const name = document.createElement('strong');
     name.textContent = source.label;
 
-    const state_ = document.createElement('span');
-    state_.className = `badge ${source.configured ? 'live' : 'subtle'}`;
-    state_.textContent = source.configured ? 'configurée' : 'absente';
+    const badge = document.createElement('span');
+    badge.className = 'badge live';
+    badge.textContent = 'configurée';
 
-    const link = document.createElement('a');
-    link.href = source.docsUrl;
-    link.target = '_blank';
-    link.rel = 'noopener';
-    link.className = 'key-link';
-    link.textContent = 'obtenir une clé';
+    const purpose = document.createElement('span');
+    purpose.className = 'muted small';
+    purpose.textContent = source.purpose || '';
 
-    head.append(name, state_, link);
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'ghost-btn small';
+    clear.textContent = 'Retirer';
+    clear.dataset.source = id;
 
-    const controls = document.createElement('div');
-    controls.className = 'key-controls';
-
-    const input = document.createElement('input');
-    input.type = 'password';
-    input.placeholder = source.placeholder || 'Collez la clé ici';
-    input.autocomplete = 'off';
-    input.spellcheck = false;
-    input.dataset.key = id;
-
-    const save = document.createElement('button');
-    save.type = 'button';
-    save.className = 'ghost-btn small';
-    save.textContent = source.configured ? 'Remplacer' : 'Enregistrer';
-    save.dataset.action = 'save';
-    save.dataset.key = id;
-
-    controls.append(input, save);
-
-    if (source.configured) {
-      const clear = document.createElement('button');
-      clear.type = 'button';
-      clear.className = 'ghost-btn small';
-      clear.textContent = 'Retirer';
-      clear.dataset.action = 'clear';
-      clear.dataset.key = id;
-      controls.append(clear);
-    }
-
-    row.append(head, controls);
+    head.append(name, badge, purpose, clear);
+    row.append(head);
     container.append(row);
   }
 }
 
-/** Enregistre ou retire une clé, puis rafraîchit l'état de l'application. */
-async function handleKeyAction(event) {
-  const button = event.target.closest('button[data-action]');
-  if (!button) return;
+/** Indique en direct quel fournisseur est reconnu pendant la saisie. */
+function previewKeyDetection() {
+  const value = $('apiKeyInput').value.trim();
+  const hint = $('keyDetectHint');
 
-  const { action, key } = button.dataset;
+  if (!value) {
+    hint.textContent = 'Aucun fournisseur à choisir : la forme de la clé suffit à la reconnaître.';
+    hint.classList.remove('warn-text');
+    return;
+  }
+
+  const formats = state.options.keyFormats || [];
+  const matched = formats.find((format) => matchesFormat(value, format));
+
+  if (matched) {
+    hint.textContent = `Clé ${matched.label} reconnue${matched.purpose ? ` — ${matched.purpose}` : ''}.`;
+    hint.classList.remove('warn-text');
+  } else {
+    hint.textContent = 'Format non reconnu pour l’instant…';
+    hint.classList.add('warn-text');
+  }
+}
+
+/**
+ * Reproduit côté client la reconnaissance faite par le serveur, uniquement
+ * pour donner un retour immédiat pendant la saisie. Le serveur reste
+ * l'autorité : c'est lui qui décide où la clé est rangée.
+ */
+function matchesFormat(value, format) {
+  const key = value.replace(/[\s"'`]/g, '');
+  if (format.source === 'replicate') return /^r8_[A-Za-z0-9]{20,}$/.test(key);
+  if (format.source === 'fal') {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{16,}$/i.test(key);
+  }
+  if (format.source === 'gemini') return /^(AIza[0-9A-Za-z_-]{20,}|AQ\.[A-Za-z0-9_.-]{20,})$/.test(key);
+  return false;
+}
+
+/** Enregistre la clé collée. Le serveur la range selon sa forme. */
+async function savePastedKey() {
+  const button = $('saveKeyBtn');
   const status = $('settingsStatus');
-  const input = $('keyRows').querySelector(`input[data-key="${key}"]`);
+  const value = $('apiKeyInput').value.trim();
+
+  if (!value) {
+    status.textContent = 'Collez d’abord une clé.';
+    $('apiKeyInput').focus();
+    return;
+  }
 
   button.disabled = true;
   const label = button.textContent;
   button.textContent = '…';
 
   try {
-    if (action === 'clear') {
-      await api('/api/settings/api-key/clear', {
-        method: 'POST',
-        body: JSON.stringify({ key }),
-      });
-      status.textContent = 'Clé retirée.';
-    } else {
-      const value = input?.value.trim();
-      if (!value) {
-        status.textContent = 'Collez d’abord une clé dans le champ.';
-        return;
-      }
-      status.textContent = 'Vérification…';
-      const result = await api('/api/settings/api-key', {
-        method: 'POST',
-        body: JSON.stringify({ key, value }),
-      });
-      status.textContent = result.warning
-        ? `Clé enregistrée, avec avertissement : ${result.warning}`
-        : result.persisted
-          ? 'Clé enregistrée et conservée dans .env.'
-          : 'Clé active pour cette session (le fichier .env n’a pas pu être écrit).';
-      if (input) input.value = '';
+    status.textContent = 'Reconnaissance et vérification…';
+    const result = await api('/api/settings/key', {
+      method: 'POST',
+      body: JSON.stringify({ value }),
+    });
+
+    $('apiKeyInput').value = '';
+    previewKeyDetection();
+
+    await refreshAfterKeyChange();
+
+    // On sélectionne le moteur correspondant à la clé enregistrée : sinon le
+    // moteur précédemment actif resterait utilisé et la nouvelle clé semblerait
+    // ignorée.
+    let suffix = '';
+    const owner = (state.options.providers || []).find((provider) => provider.keyProvider === result.source);
+    const option = owner && $('provider').querySelector(`option[value="${owner.id}"]`);
+    if (option && !option.disabled) {
+      $('provider').value = owner.id;
+      suffix = ` Moteur « ${owner.shortLabel || owner.label} » sélectionné.`;
     }
-
-    // L'état du serveur a changé : on rafraîchit options et santé.
-    state.health = await api('/api/health');
-    state.options = await api('/api/options');
-    applyHealth();
-    buildSelects();
-
-    // On sélectionne le moteur correspondant à la clé qu'on vient d'enregistrer :
-    // sans cela, le premier moteur configuré resterait actif (souvent Veo) et
-    // l'utilisateur croirait que sa nouvelle clé est ignorée.
-    if (action === 'save') {
-      const owner = (state.options.providers || []).find((provider) => provider.keyProvider === key);
-      const option = owner && $('provider').querySelector(`option[value="${owner.id}"]`);
-      if (option && !option.disabled) {
-        $('provider').value = owner.id;
-        status.textContent += ` Moteur « ${owner.shortLabel || owner.label} » sélectionné.`;
-      }
-    }
-
     updateEstimate();
-    loadDiagnostics();
+
+    status.textContent =
+      (result.warning
+        ? `Clé ${result.label} enregistrée, avec avertissement : ${result.warning}`
+        : result.persisted
+          ? `Clé ${result.label} enregistrée et conservée dans .env.`
+          : `Clé ${result.label} active pour cette session (le fichier .env n’a pas pu être écrit).`) + suffix;
   } catch (err) {
-    status.textContent = err.message + (err.payload?.hint ? ` — ${err.payload.hint}` : '');
+    status.textContent =
+      err.message +
+      (err.payload?.hint ? ` — ${err.payload.hint}` : '');
   } finally {
     button.disabled = false;
     button.textContent = label;
   }
+}
+
+/** Retire une clé enregistrée. */
+async function removeKey(event) {
+  const button = event.target.closest('button[data-source]');
+  if (!button) return;
+
+  const source = button.dataset.source;
+  const status = $('settingsStatus');
+
+  button.disabled = true;
+  button.textContent = '…';
+  try {
+    await api('/api/settings/key/clear', {
+      method: 'POST',
+      body: JSON.stringify({ source }),
+    });
+    await refreshAfterKeyChange();
+    status.textContent = 'Clé retirée.';
+  } catch (err) {
+    status.textContent = err.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Retirer';
+  }
+}
+
+/** Recharge l'état du serveur après un changement de clé. */
+async function refreshAfterKeyChange() {
+  state.health = await api('/api/health');
+  state.options = await api('/api/options');
+  applyHealth();
+  buildSelects();
+  renderKeyRows();
+  loadDiagnostics();
 }
 
 async function loadDiagnostics() {

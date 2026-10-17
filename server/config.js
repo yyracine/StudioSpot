@@ -4,7 +4,7 @@
  * Ce module est l'unique source de verite pour :
  *  - les chemins de travail (uploads / outputs)
  *  - les catalogues proposes dans l'interface (types de video, ambiances, durees)
- *  - les correspondances avec les contraintes reelles de l'API Veo
+ *  - les correspondances avec les contraintes reelles des fournisseurs
  */
 import 'dotenv/config';
 import path from 'node:path';
@@ -198,10 +198,10 @@ export const VIDEO_TYPES = [
 /* ------------------------------------------------------------------ *
  * Ambiances sonores
  * ------------------------------------------------------------------ *
- * Pour les moteurs a audio natif (Veo), `prompt` decrit la musique au
- * modele. Pour les autres (fal, Replicate) ce bloc est retire du prompt :
- * une nappe locale est synthetisee par ffmpeg a partir de `demo`, faute de
- * quoi l'ambiance choisie serait purement ignoree.
+ * Pour un moteur a audio natif, `prompt` decrit la musique au modele. Pour les
+ * autres (fal, Replicate) ce bloc est retire du prompt : une nappe locale est
+ * synthetisee par ffmpeg a partir de `demo`, faute de quoi l'ambiance choisie
+ * serait purement ignoree.
  *
  * `demo` : accord synthetise (frequences, pulsation, profondeur, volume).
  *          C'est une nappe d'accompagnement, pas une reproduction fidele du
@@ -322,9 +322,12 @@ export const AMBIANCES = [
  * n'acceptent ni les memes durees ni les memes extensions.
  *
  * Exemples :
- *   Veo        5 s -> 6 s generees puis coupees a 5,00 s ;
- *              15 s -> 8 s + extension de 7 s.
- *   fal/Replic. la duree est plafonnee a ce que le modele sait produire.
+ *   fal        5 s -> 5,06 s produites puis coupees a 5,00 s ;
+ *              8 s et 15 s -> plafonnees a 6,25 s (limite du modele).
+ *   Replicate  la duree est plafonnee a ce que le modele sait produire.
+ *
+ * Un moteur capable de prolonger un clip (extension) pourrait atteindre 15 s ;
+ * aucun fournisseur actuellement integre ne le propose.
  */
 export const DURATIONS = [
   { id: '5', label: '5 secondes', seconds: 5 },
@@ -333,37 +336,26 @@ export const DURATIONS = [
 ];
 
 /* ------------------------------------------------------------------ *
- * Modeles Veo
- * ------------------------------------------------------------------ */
-export const MODELS = [
-  {
-    id: 'veo-3.1-generate-preview',
-    label: 'Veo 3.1 — qualité maximale',
-    supportsExtension: true,
-  },
-  {
-    id: 'veo-3.1-fast-generate-preview',
-    label: 'Veo 3.1 Fast — plus rapide et économique',
-    supportsExtension: true,
-  },
-];
-export const DEFAULT_MODEL = MODELS[0].id;
-
-/* ------------------------------------------------------------------ *
  * Rendu du texte promotionnel
  * ------------------------------------------------------------------ *
- *  overlay : Veo tourne une image propre, ffmpeg incruste le texte exact
+ *  overlay : le moteur filme un cadre propre, ffmpeg incruste le texte exact
  *            (typographie nette et orthographe garantie) -> recommande.
- *  veo     : Veo dessine lui-meme le texte dans la video.
+ *  model   : on demande au moteur de dessiner lui-meme le texte. Ne fonctionne
+ *            que si le moteur en est capable ; sinon le pipeline bascule
+ *            automatiquement sur l'incrustation et le signale.
  *  none    : aucun texte.
  */
 export const TEXT_MODES = [
   {
     id: 'overlay',
     label: 'Incrustation nette (recommandé)',
-    hint: 'Veo filme un cadre propre, le texte exact est incrusté en post-production.',
+    hint: 'Le moteur filme un cadre propre, le texte exact est incrusté en post-production.',
   },
-  { id: 'veo', label: 'Texte généré par Veo', hint: 'Veo dessine lui-même le texte dans l’image.' },
+  {
+    id: 'model',
+    label: 'Texte généré par le modèle',
+    hint: 'Le moteur dessine lui-même le texte dans l’image — dépend du moteur choisi.',
+  },
   { id: 'none', label: 'Aucun texte', hint: 'Vidéo produit sans message publicitaire.' },
 ];
 export const DEFAULT_TEXT_MODE = 'overlay';
@@ -377,7 +369,7 @@ export const DEFAULT_ASPECT_RATIO = 'auto';
 
 export const RESOLUTIONS = [
   { id: '720p', label: '720p' },
-  { id: '1080p', label: '1080p — 8 s uniquement' },
+  { id: '1080p', label: '1080p — selon le moteur' },
 ];
 export const DEFAULT_RESOLUTION = '720p';
 
@@ -394,29 +386,36 @@ export const LIMITS = {
 export const JOB_RETENTION = 40;
 
 /* ------------------------------------------------------------------ *
- * Cles API des fournisseurs (modifiables a chaud depuis l'interface)
+ * Cles API (modifiables a chaud depuis l'interface)
  * ------------------------------------------------------------------ *
- * Chaque fournisseur declare son propre emplacement de cle, ce qui permet
- * d'en avoir plusieurs configurees et de basculer de l'un a l'autre.
+ * L'utilisateur colle UNE cle : sa forme suffit a identifier a qui elle
+ * appartient (voir server/api-keys.js). Chaque source sait dans quelle
+ * variable d'environnement la persister.
+ *
+ * `purpose` distingue ce qui sert a GENERER la video de ce qui n'alimente
+ * qu'une aide texte.
  */
 export const KEY_SOURCES = {
-  gemini: {
-    label: 'Clé API Gemini (Google AI Studio)',
-    envVars: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
-    docsUrl: 'https://aistudio.google.com/apikey',
-    placeholder: 'AIza… ou AQ.…',
-  },
   fal: {
-    label: 'Clé API fal.ai',
+    label: 'fal.ai',
+    purpose: 'Génération vidéo',
     envVars: ['FAL_KEY', 'FAL_API_KEY'],
     docsUrl: 'https://fal.ai/dashboard/keys',
-    placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:xxxxxxxx…',
+    example: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
   },
   replicate: {
-    label: 'Jeton API Replicate',
+    label: 'Replicate',
+    purpose: 'Génération vidéo',
     envVars: ['REPLICATE_API_TOKEN'],
     docsUrl: 'https://replicate.com/account/api-tokens',
-    placeholder: 'r8_…',
+    example: 'r8_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+  },
+  gemini: {
+    label: 'Google AI Studio',
+    purpose: 'Suggestions de messages (texte)',
+    envVars: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
+    docsUrl: 'https://aistudio.google.com/apikey',
+    example: 'AIza… ou AQ.…',
   },
 };
 
@@ -452,7 +451,6 @@ export const getOptions = () => ({
   videoTypes: VIDEO_TYPES.map(({ id, label, hint }) => ({ id, label, hint })),
   ambiances: AMBIANCES.map(({ id, label, hint }) => ({ id, label, hint })),
   durations: DURATIONS.map(({ id, label, seconds }) => ({ id, label, seconds })),
-  models: MODELS.map(({ id, label }) => ({ id, label })),
   textModes: TEXT_MODES.map(({ id, label, hint }) => ({ id, label, hint })),
   aspectRatios: ASPECT_RATIOS,
   resolutions: RESOLUTIONS,
@@ -461,7 +459,6 @@ export const getOptions = () => ({
     videoType: VIDEO_TYPES[0].id,
     ambiance: AMBIANCES[0].id,
     duration: DURATIONS[1].id,
-    model: DEFAULT_MODEL,
     textMode: DEFAULT_TEXT_MODE,
     aspectRatio: DEFAULT_ASPECT_RATIO,
     resolution: DEFAULT_RESOLUTION,
@@ -477,8 +474,9 @@ export const getOptions = () => ({
       id,
       {
         label: source.label,
+        purpose: source.purpose,
         docsUrl: source.docsUrl,
-        placeholder: source.placeholder,
+        example: source.example,
         configured: hasKey(id),
       },
     ]),

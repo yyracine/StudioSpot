@@ -1,8 +1,8 @@
 /**
- * Construction des prompts envoyes a Veo.
+ * Construction des prompts envoyes au moteur d'animation.
  *
- * Note importante : la documentation Veo precise que l'anglais est la seule
- * langue pleinement evaluee. Les consignes sont donc redigees en anglais,
+ * Note importante : les modeles image-to-video sont entraines et evalues
+ * principalement en anglais. Les consignes sont donc redigees en anglais,
  * mais le message publicitaire et le nom du produit sont repris MOT POUR MOT
  * (en francais) : c'est ce texte exact qui doit apparaitre a l'ecran.
  */
@@ -13,7 +13,7 @@ const oneLine = (value) => String(value || '').replace(/\s+/g, ' ').trim();
 
 /**
  * Bloc "fidelite produit" : indispensable en image-to-video pour eviter que
- * Veo ne reinvente le produit (forme, couleur, logo, matiere).
+ * le modele ne reinvente le produit (forme, couleur, logo, matiere).
  */
 const productFidelity = (productName) =>
   [
@@ -32,7 +32,7 @@ const textBlock = (textMode, productName, adMessage) => {
     );
   }
 
-  if (textMode === 'veo') {
+  if (textMode === 'model') {
     return [
       'On-screen text: display the following promotional copy, rendered as clean, modern, perfectly ' +
         'legible typography integrated into the composition.',
@@ -141,8 +141,8 @@ export function buildMainPrompt(input) {
 }
 
 /**
- * Prompt d'extension : segment supplementaire pour atteindre la duree visee
- * (Veo ajoute 7 s au clip precedent).
+ * Prompt d'extension : segment supplementaire pour atteindre la duree visee.
+ * Tous les moteurs ne savent pas prolonger ; le plan decide s'il y a lieu.
  */
 export function buildExtensionPrompt(input) {
   const videoType = findById(VIDEO_TYPES, input.videoTypeId) || VIDEO_TYPES[0];

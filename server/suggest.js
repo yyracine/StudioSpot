@@ -1,13 +1,13 @@
 /**
  * Suggestions de messages publicitaires.
  *
- * Utilise un modele texte Gemini (gemini-2.5-flash), disponible sur le palier
- * gratuit — contrairement a Veo. C'est donc une aide gratuite, et elle reste
- * utile meme quand la generation video est refusee par le quota.
+ * Utilise un modele texte Google (gemini-2.5-flash) via la cle « Google AI
+ * Studio ». C'est une aide purement textuelle : elle ne dépend d'aucun moteur
+ * de génération vidéo, et reste donc disponible même sans fournisseur vidéo.
  *
- * Si aucune cle Gemini n'est configuree, on renvoie une liste locale de repli
- * construite a partir du nom du produit : l'interface propose toujours quelque
- * chose, sans jamais bloquer.
+ * Si aucune clé Google n'est configurée — ou si le quota texte est atteint —
+ * on renvoie une liste locale de repli construite hors ligne : l'interface
+ * propose toujours quelque chose, sans jamais bloquer.
  */
 import { getKey, VIDEO_TYPES, findById } from './config.js';
 import { ProviderError } from './providers/http.js';

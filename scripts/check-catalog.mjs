@@ -1,12 +1,24 @@
 /**
  * Vérifie que chaque type de vidéo et chaque ambiance produit un prompt
  * cohérent, et que la contrainte de présence humaine est bien transmise.
+ *
+ * Le plan utilisé est celui qu'un moteur distant déclare réellement : on
+ * interroge le registre plutôt que de fabriquer un plan à la main, pour que ce
+ * contrôle suive les moteurs réellement installés.
  */
 import { buildMainPrompt } from '../server/prompts.js';
 import { AMBIANCES, VIDEO_TYPES, findById } from '../server/config.js';
-import veo from '../server/providers/veo.js';
+import { PROVIDERS } from '../server/providers/index.js';
 
-const plan = veo.buildPlan({ durationId: '8', aspectRatio: '16:9', resolution: '720p' });
+/** Premier moteur déclaré : son plan sert de référence aux prompts. */
+const reference = PROVIDERS[0];
+if (!reference) {
+  console.error('aucun moteur déclaré dans server/providers/index.js');
+  process.exit(1);
+}
+
+const plan = reference.buildPlan({ durationId: '8', aspectRatio: '16:9', resolution: '720p' });
+console.log(`plan de référence : ${reference.label} — ${plan.seconds} s, ${plan.resolution}\n`);
 
 let failed = 0;
 const check = (label, ok, extra = '') => {
@@ -14,7 +26,7 @@ const check = (label, ok, extra = '') => {
   if (!ok) failed += 1;
 };
 
-console.log('Types de vidéo (prompt principal, 8 s, Veo) :\n');
+console.log('Types de vidéo (prompt principal, 8 s demandées) :\n');
 
 for (const videoType of VIDEO_TYPES) {
   const prompt = buildMainPrompt({

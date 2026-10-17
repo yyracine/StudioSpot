@@ -1,7 +1,8 @@
 # RESUME — Animateur de Photos Produit
 
 > Document de passation. À lire **en premier** au début d'une nouvelle session.
-> Dernière mise à jour : commit `8a39a0e` (branche `main`, poussée sur GitHub).
+> Dernière mise à jour : après retrait du fournisseur vidéo de Google et refonte
+> de la saisie des clés (branche `main`, poussée sur GitHub).
 
 ---
 
@@ -9,9 +10,8 @@
 
 Application web locale qui transforme **une photo de produit** en **vidéo
 publicitaire** : elle construit le prompt, appelle un moteur image-to-video
-(Veo, fal.ai ou Replicate), puis assure en local l'habillage texte, la coupe
-exacte, l'audio et le silence. **27 fichiers suivis, ≈ 6 870 lignes**
-(dont 6 187 de code et 681 de documentation).
+(**fal.ai** ou **Replicate**), puis assure en local l'habillage texte, la coupe
+exacte, l'audio et le silence.
 
 ---
 
@@ -25,16 +25,22 @@ exacte, l'audio et le silence. **27 fichiers suivis, ≈ 6 870 lignes**
 | **Tester** | `npm test` (gratuit, aucun appel distant) |
 | **Utilisateur** | francophone, exige de l'honnêteté sur les limites. Répondre en français. |
 
-**Clés présentes dans `.env` (non versionné, valeurs jamais recopiées ici) :**
+**État des clés — IMPORTANT :**
 
 | Clé | État | Conséquence |
 |---|---|---|
-| `GEMINI_API_KEY` | renseignée (53 car.) | Modèles **texte OK**, mais Veo et les modèles image renvoient **429** : projet Google sans facturation |
-| `FAL_KEY` | renseignée (72 car.) | fal **refuse** : `User is locked. Reason: Exhausted balance` — compte sans crédit |
-| `REPLICATE_API_TOKEN` | absente | adaptateur jamais exécuté |
+| `FAL_KEY` | **vide** (effacée par erreur, voir §7 n° 12) | À re-coller par l'utilisateur. Le compte fal était de toute façon sans crédit (`Exhausted balance`). |
+| `REPLICATE_API_TOKEN` | absente | Adaptateur jamais exécuté. |
+| `GEMINI_API_KEY` | **vide** (même incident) | Ne sert qu'aux suggestions de messages ; sans elle, repli hors ligne. |
 
-**Bilan pratique : aujourd'hui, seul le rendu local fonctionne.** C'est le
-chemin gratuit et garanti ; il a été réparé au dernier commit.
+**Bilan pratique : aujourd'hui, seul le rendu local fonctionne** — gratuit,
+garanti, et vérifié de bout en bout. Pour du mouvement IA, il faut que
+l'utilisateur recolle une clé **et** que le compte ait du crédit.
+
+> L'utilisateur a explicitement demandé à **ne plus utiliser le fournisseur vidéo
+> de Google** : il a été supprimé du code, des catalogues et de la documentation.
+> Ne pas le réintroduire sans qu'il le demande. Google AI Studio ne sert plus
+> qu'aux suggestions de messages (texte).
 
 ---
 
@@ -51,9 +57,14 @@ produit »**.
 - **11 ambiances sonores** : Corporate, Énergique, Luxe, Cinématique,
   Minimaliste, Chaleureux, Urbain, Tendance réseaux sociaux, Tension dramatique,
   Naturel, **Pas de son**.
-- **3 durées** : 5 / 8 / 15 s.
-- **Options avancées** : moteur de génération, cadrage, définition, modèle Veo,
-  rendu du texte.
+- **3 durées** : 5 / 8 / 15 s (15 s n'est pas atteignable avec les moteurs
+  actuels : le plan l'annonce).
+- **Options avancées** : moteur de génération, cadrage, définition, modèle
+  utilisé (information), rendu du texte.
+- **Saisie des clés** : un **champ unique** où l'utilisateur colle la clé de son
+  choix, reconnue automatiquement à sa forme (`r8_…` → Replicate,
+  `identifiant:secret` → fal, `AIza…`/`AQ.…` → Google). Aucun fournisseur à
+  choisir. Voir `server/api-keys.js`.
 - Résultat : lecteur vidéo, téléchargement MP4, prompt utilisé, journal de
   production en direct (SSE).
 
@@ -65,6 +76,7 @@ produit »**.
 server/
   index.js        HTTP : upload, validation, routes, SSE
   config.js       SOURCE UNIQUE DE VÉRITÉ : catalogues, bornes, clés
+  api-keys.js     reconnaissance d'une clé API par sa forme
   prompts.js      prompts construits depuis le PLAN du moteur
   pipeline.js     orchestration — ne connaît AUCUN moteur
   jobs.js         suivi des tâches + diffusion SSE
@@ -73,10 +85,10 @@ server/
   providers/
     index.js      registre + sélection du moteur
     http.js       polling, téléchargement, traduction des erreurs
-    veo.js  fal.js  replicate.js
+    fal.js  replicate.js        (le fournisseur vidéo de Google a été retiré)
 public/  index.html · styles.css · app.js
 scripts/  smoke-test · check-providers · check-provider-schema
-          check-catalog · check-ui-hidden · probe-key
+          check-catalog · check-ui-hidden · check-api-keys · probe-key
 ```
 
 ### Concept 1 — le « plan » de production
@@ -87,11 +99,11 @@ chacun, coupe finale, résolution, limitation éventuelle. **Aucune durée n'est
 codée en dur dans le pipeline.** C'est ce qui permet d'annoncer honnêtement
 « 15 s demandées → 6,25 s livrées » au lieu de mentir.
 
-| Demandé | Veo | fal (`wan-i2v`) |
+| Demandé | fal (`wan-i2v`) | Replicate |
 |---|---|---|
-| 5 s | 6 s produites → coupées à 5,00 s | 5,06 s → coupées à 5,00 s |
-| 8 s | 8 s natives | **6,25 s** (plafond du modèle) |
-| 15 s | 8 s + extension 7 s = **15 s** | **6,25 s** |
+| 5 s | 81 images à 16 i/s = 5,06 s → coupées à 5,00 s | clip de 5 s |
+| 8 s | **6,25 s** (plafond du modèle, annoncé) | **5 s** (annoncé) |
+| 15 s | **6,25 s** (annoncé) | **5 s** (annoncé) |
 
 ### Concept 2 — les capacités du moteur
 
@@ -174,25 +186,29 @@ survécu à 40+ vérifications parce qu'aucune n'exerçait le navigateur.
 | 2 | ffmpeg « fichier introuvable » | `path.basename()` sur une entrée située hors du `cwd` |
 | 3 | `final.mp4` au mauvais endroit | sorties résolues relativement au `cwd` au lieu du dossier de tâche → **toutes les sorties sont désormais absolues** |
 | 4 | Bouton « Réessayer » cassé | `enterRunningState()` remettait `state.jobId` à zéro **avant** la construction de l'URL `/retry` |
-| 5 | `npm test` consommait du quota Veo | le test tentait un vrai appel dès qu'une clé existait → il **force** désormais le rendu local |
-| 6 | Plan affiché faux | « Rendu local » annonçait le coût de Veo → `provider=demo` explicite |
+| 5 | `npm test` consommait du quota distant | le test tentait un vrai appel dès qu'une clé existait → il **force** désormais le rendu local (`--engine` pour un appel réel) |
+| 6 | Plan affiché faux | « Rendu local » annonçait le coût du moteur distant → `provider=demo` explicite |
 | 7 | fal : premier appel condamné | `duration` **n'existe pas** chez fal (→ `num_frames` + `frames_per_second`) et `resolution` n'accepte que `480p`/`720p` |
 | 8 | **Placeholder couvrant la vidéo** | voir §6 |
 | 9 | `a 8 second` | article anglais : 8, 11 et 18 prennent `an` |
 | 10 | Erreur fal trompeuse | solde épuisé renvoyé en 401 → affiché « clé refusée ». Messages dédiés au solde, 402, 404, 422 |
+| 11 | **Fichiers corrompus par PowerShell** | `Get-Content`/`Set-Content` sans BOM : le fichier est lu en ANSI puis réécrit en UTF-8, ce qui **double les accents** et produit un fichier non-UTF-8 illisible. **Ne jamais éditer ces fichiers avec les cmdlets PowerShell** : utiliser les outils d'édition (UTF-8 garanti). Récupération : `git checkout -- <fichier>` |
+| 12 | **`.env` écrasé par un test** | `scripts/check-api-keys.mjs` enregistre des clés factices, et l'enregistrement **persiste dans `.env`** : les vraies clés `FAL_KEY` et `GEMINI_API_KEY` de l'utilisateur ont été détruites (irrécupérables : `.env` n'est pas versionné). Le script **sauvegarde et restaure** désormais `.env`. **Tout test qui touche aux clés doit faire de même.** |
 
 ---
 
 ## 8. Vérifications : ce qui est prouvé, ce qui ne l'est pas
 
-**Toutes ces suites passent** (dernière exécution : commit `8a39a0e`) :
+**Toutes ces suites passent** (dernière exécution : après retrait du fournisseur
+vidéo de Google) :
 
 | Suite | Objet |
 |---|---|
 | `npm test` | bout en bout (9 vérifications, dont 3 sur la nappe locale) **+** conflits `hidden`/CSS |
 | `npm run test:catalog` | 33 points : 11 types × 11 ambiances produisent un prompt cohérent |
-| `npm run test:providers` | 27 points (adaptateurs) + 8 points (schéma officiel fal) |
-| `scripts/probe-key.mjs` | ce que la clé Gemini peut réellement appeler |
+| `npm run test:providers` | 20 points (adaptateurs fal + Replicate) + 8 points (schéma officiel fal) |
+| `npm run test:keys` | 14 points : reconnaissance des clés, rejet explicite, sauvegarde de `.env` |
+| `scripts/probe-key.mjs` | ce que la clé Google peut réellement appeler |
 
 Points **vérifiés réellement** : durées livrées, présence/absence de piste audio,
 lecture partielle HTTP 206 (indispensable à la timeline), position de
@@ -206,7 +222,6 @@ catalogues, erreurs d'API, cas photo carrée → 9:16 en rendu local.
 - **L'adaptateur Replicate n'a jamais été exécuté** et son schéma n'a pas pu être
   lu (il exige un jeton 401). Son corps d'appel est volontairement minimal
   (`prompt` + `image`).
-- **Veo n'a jamais généré** : quota refusé (429, projet sans facturation).
 - **Aucune vérification visuelle** : le modèle courant **ne lit pas les images**
   (`read_image` échoue). D'où la technique employée : comparer deux rendus
   (avec / sans texte) par **différence de luminance sur des bandes ciblées** de
@@ -217,14 +232,14 @@ catalogues, erreurs d'API, cas photo carrée → 9:16 en rendu local.
 
 ## 9. Ce qui bloque, et les options
 
-**Blocage actuel : aucun moteur distant utilisable** (Google sans facturation,
-fal sans solde).
+**Blocage actuel : aucun moteur distant utilisable** — fal sans solde
+(`Exhausted balance`) et les clés ont été effacées par erreur (voir §7 n° 12).
 
 | Option | Coût | Commentaire |
 |---|---|---|
-| **Rendu local** | 0 € | Fonctionne (réparé). Animation Ken Burns, habillage exact, nappe locale. |
-| **Recharger fal.ai** | quelques € | Le plus simple : un clip Wan 720p coûte quelques centimes. Compte actuellement `Exhausted balance`. |
-| **Activer la facturation Google** | payant | Veo reste le meilleur rendu (audio natif + texte fidèle). |
+| **Rendu local** | 0 € | Fonctionne et vérifié. Animation Ken Burns, habillage exact, nappe locale. |
+| **Recoller une clé + recharger fal.ai** | quelques € | Le plus simple : un clip Wan 720p coûte quelques centimes. |
+| **Replicate** | quelques € | Jamais testé : prévoir un premier essai prudent. |
 | **Colab gratuit + Wan 2.2 / LTX** | 0 € | Vraiment gratuit mais manuel, sessions limitées. La machine locale ne peut pas (Intel UHD 620, pas de CUDA). |
 | **Mode « clip importé »** *(proposé, non implémenté)* | 0 € | Générer le mouvement sur une interface web à crédits quotidiens (Kling, Hailuo), puis appliquer texte + audio + coupe dans l'app. |
 
@@ -243,14 +258,22 @@ npm start                    # http://127.0.0.1:5178
 npm test                     # gratuit, déterministe, aucun appel distant
 npm run test:catalog
 npm run test:providers
+npm run test:keys            # ⚠ sauvegarde et restaure .env
 
 node scripts/smoke-test.mjs --duration 15 --ambiance aucun
 node scripts/smoke-test.mjs --vertical --duration 5
-node scripts/smoke-test.mjs --veo            # vrai appel Veo (payant)
+node scripts/smoke-test.mjs --engine         # vrai appel au moteur (payant)
 
-node scripts/probe-key.mjs                   # diagnostic de clé Gemini
+node scripts/probe-key.mjs                   # diagnostic de clé Google
 node scripts/check-provider-schema.mjs       # nos requêtes vs schéma fal officiel
 node scripts/check-ui-hidden.mjs             # conflits hidden / CSS
+```
+
+⚠️ **Serveur orphelin** : si `npm start` semble sans effet alors que le port
+répond, un ancien processus écoute encore. Le tuer avant de relancer :
+
+```powershell
+netstat -ano | Select-String ":5178.*LISTENING"   # puis Stop-Process -Id <PID> -Force
 ```
 
 ---

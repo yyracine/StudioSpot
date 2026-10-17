@@ -61,10 +61,24 @@ Le garde-fou global `[hidden] { display: none !important }` doit rester, et
 
 ## 5. État au dernier passage (voir RESUME.md pour le détail)
 
-Aucun moteur distant utilisable : Gemini sans facturation (**429** sur Veo et
-sur les modèles image), fal.ai **sans solde** (`Exhausted balance`), Replicate
-**jamais exécuté**. Seul le **rendu local** fonctionne — c'est le chemin gratuit
-et garanti, et il est vérifié de bout en bout.
+**Le fournisseur vidéo de Google a été retiré sur demande explicite de
+l'utilisateur** — ne pas le réintroduire. Les moteurs disponibles sont
+**fal.ai** et **Replicate** ; Google AI Studio ne sert qu'aux suggestions de
+messages (texte).
+
+Aucun moteur distant n'est utilisable en l'état : compte fal sans solde
+(`Exhausted balance`), et les clés de `.env` ont été effacées par erreur (voir
+ci-dessous). Seul le **rendu local** fonctionne — gratuit, garanti, vérifié.
+
+⚠️ **Les tests qui touchent aux clés doivent sauvegarder puis restaurer
+`.env`.** `check-api-keys.mjs` enregistre des clés factices et l'enregistrement
+persiste dans `.env` : sans ce garde-fou, un test a déjà détruit les vraies clés
+de l'utilisateur, de façon irrécupérable (`.env` n'est pas versionné).
+
+⚠️ **Ne jamais éditer ces fichiers avec `Get-Content`/`Set-Content` de
+PowerShell** : sans BOM, ils sont lus en ANSI puis réécrits en UTF-8, ce qui
+double les accents et produit des fichiers non-UTF-8. Utiliser les outils
+d'édition, qui garantissent l'UTF-8.
 
 Ne pas proposer NVIDIA Nemotron comme moteur vidéo : c'est un LLM multimodal,
 et le catalogue d'API NVIDIA ne contient **aucun** générateur vidéo (vérifié).

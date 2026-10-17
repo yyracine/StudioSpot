@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Animateur de Photos Produit — vidéo publicitaire par Veo</title>
+    <title>Animateur de Photos Produit — vidéo publicitaire par IA</title>
     <meta
       name="description"
-      content="Transformez une photo de produit en vidéo publicitaire animée avec Veo : rotation 360°, unboxing, avant/après, texte promotionnel intégré et ambiance sonore."
+      content="Transformez une photo de produit en vidéo publicitaire animée avec un moteur image-to-video : rotation 360°, unboxing, avant/après, texte promotionnel intégré et ambiance sonore."
     />
     <link rel="stylesheet" href="styles.css" />
     <link
@@ -26,11 +26,11 @@
         </span>
         <div class="brand-text">
           <h1>Animateur de Photos Produit</h1>
-          <p>Une photo statique devient une vidéo publicitaire, grâce à Veo.</p>
+          <p>Une photo statique devient une vidéo publicitaire animée.</p>
         </div>
       </div>
       <div class="topbar-actions">
-        <span class="badge" id="modeBadge" title="État de la connexion Veo">
+        <span class="badge" id="modeBadge" title="État de la connexion au moteur">
           <span class="dot"></span><span id="modeBadgeText">Connexion…</span>
         </span>
         <button type="button" class="ghost-btn" id="settingsBtn">
@@ -180,7 +180,7 @@
           <details class="advanced">
             <summary>
               Options avancées
-              <span class="muted small">cadrage, modèle Veo, typographie</span>
+              <span class="muted small">cadrage, moteur, typographie</span>
             </summary>
 
             <div class="grid-2">
@@ -202,9 +202,8 @@
                 <span class="field-hint" id="resolutionHint"></span>
               </label>
 
-              <label class="field" id="veoModelField">
-                <span class="field-label">Modèle Veo</span>
-                <select id="model" name="model"></select>
+              <label class="field" id="modelField" hidden>
+                <span class="field-label">Modèle utilisé</span>
                 <span class="field-hint" id="modelHint"></span>
               </label>
 
@@ -271,7 +270,7 @@
           </div>
           <div class="bar"><div class="bar-fill" id="barFill"></div></div>
           <p class="muted small" id="progressDetail">
-            Veo peut mettre de 1 à 6 minutes selon la charge des serveurs.
+            Le moteur peut mettre de 1 à 6 minutes selon la charge des serveurs.
           </p>
           <details class="console-wrap">
             <summary>Journal de production</summary>
@@ -283,7 +282,7 @@
         <div class="result-zone" id="resultZone" hidden>
           <div class="result-head">
             <strong id="resultTitle">Vidéo prête</strong>
-            <span class="badge success" id="resultMode">Veo</span>
+            <span class="badge success" id="resultMode">Moteur</span>
           </div>
           <div class="meta-grid" id="resultMeta"></div>
           <div class="result-actions">
@@ -292,7 +291,7 @@
             <button type="button" class="ghost-btn" id="newBtn">Nouveau produit</button>
           </div>
           <details class="prompt-wrap">
-            <summary>Prompt envoyé à Veo</summary>
+            <summary>Prompt envoyé au moteur</summary>
             <pre class="console prompt" id="promptOut"></pre>
             <button type="button" class="ghost-btn small" id="copyPromptBtn">Copier le prompt</button>
           </details>
@@ -314,8 +313,8 @@
             </button>
           </div>
           <p class="muted small" id="demoFallbackNote" hidden>
-            Le mode démo local anime la photo et applique le même habillage, sans appeler Veo :
-            aucun coût, résultat immédiat.
+            Le mode démo local anime la photo et applique le même habillage, sans appeler
+            aucun moteur : aucun coût, résultat immédiat.
           </p>
         </div>
       </section>
@@ -327,12 +326,25 @@
         <h2>Réglages</h2>
 
         <div class="field">
-          <span class="field-label">Clés API des moteurs de génération</span>
-          <p class="field-hint">
-            Une seule clé suffit : le premier moteur configuré est utilisé, et vous pouvez en choisir
-            un autre dans les options avancées. Les clés restent sur ce serveur (fichier
-            <code>.env</code>) et ne sont jamais renvoyées au navigateur.
+          <label class="field-label" for="apiKeyInput">Collez votre clé API</label>
+          <div class="key-paste">
+            <input
+              type="password"
+              id="apiKeyInput"
+              placeholder="Collez la clé de votre fournisseur…"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button type="button" class="cta small" id="saveKeyBtn">Enregistrer</button>
+          </div>
+          <p class="field-hint" id="keyDetectHint">
+            Aucun fournisseur à choisir : la forme de la clé suffit à la reconnaître.
           </p>
+          <div class="key-rows" id="keyFormatsList"></div>
+        </div>
+
+        <div class="field">
+          <span class="field-label">Clés enregistrées</span>
           <div class="key-rows" id="keyRows"></div>
         </div>
 

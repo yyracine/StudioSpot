@@ -20,11 +20,10 @@
  * chacun, quelle coupe finale. C’est ce qui permet d’annoncer honnêtement au
  * client ce qui sera livré (5/8/15 s ne veulent pas dire la même chose partout).
  */
-import veo from './veo.js';
 import fal from './fal.js';
 import replicate from './replicate.js';
 
-export const PROVIDERS = [veo, fal, replicate];
+export const PROVIDERS = [fal, replicate];
 
 export const getProvider = (id) => PROVIDERS.find((provider) => provider.id === id) || null;
 

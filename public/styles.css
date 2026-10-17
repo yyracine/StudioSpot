@@ -510,6 +510,29 @@ select:hover {
   flex: none;
 }
 
+/* Champ unique « collez votre clé » */
+.key-paste {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.key-paste input {
+  flex: 1;
+  min-width: 0;
+}
+
+.key-paste .cta {
+  flex: none;
+  width: auto;
+  white-space: nowrap;
+}
+
+/* Bouton « Retirer » aligné à droite dans la liste des clés enregistrées */
+.key-head .ghost-btn {
+  margin-left: auto;
+}
+
 /* ============================== Dropzone ============================= */
 .dropzone {
   border: 1.5px dashed var(--border-strong);

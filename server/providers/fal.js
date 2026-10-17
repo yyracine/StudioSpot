@@ -72,7 +72,7 @@ export default {
   keyLabel: 'Clé API fal.ai',
   note:
     'Des crédits sont offerts à l’inscription. Modèles ouverts (Wan, LTX) ou propriétaires (Kling, Hailuo), ' +
-    'bien moins chers à la seconde que Veo. Pas d’audio natif ni de texte rendu : c’est ffmpeg qui s’en charge.',
+    'facturés à la seconde. Pas d’audio natif ni de texte rendu : c’est ffmpeg qui s’en charge.',
 
   capabilities: {
     nativeAudio: false,

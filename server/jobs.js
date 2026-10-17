@@ -1,9 +1,10 @@
 /**
  * Suivi des taches de production.
  *
- * Une generation Veo dure de 11 secondes a 6 minutes (et jusqu'a 2 appels pour
- * la duree de 15 s). On expose donc une tache asynchrone suivie en
- * Server-Sent Events, avec un instantane JSON en repli.
+ * Une generation distante dure de quelques secondes a plusieurs minutes (et
+ * parfois plusieurs appels pour atteindre la duree visee). On expose donc une
+ * tache asynchrone suivie en Server-Sent Events, avec un instantane JSON en
+ * repli.
  */
 import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
@@ -18,8 +19,8 @@ const HEARTBEAT_MS = 20_000;
 export const STAGES = {
   queued: { label: 'En file d’attente', progress: 0 },
   prepare: { label: 'Préparation de la photo', progress: 4 },
-  generate: { label: 'Veo filme votre produit', progress: 62 },
-  extend: { label: 'Veo prolonge la scène', progress: 74 },
+  generate: { label: 'Le moteur filme votre produit', progress: 62 },
+  extend: { label: 'Le moteur prolonge la scène', progress: 74 },
   post: { label: 'Habillage et finitions', progress: 88 },
   finish: { label: 'Finalisation', progress: 97 },
   done: { label: 'Terminé', progress: 100 },
@@ -95,7 +96,7 @@ export function updateJob(id, patch = {}) {
   Object.assign(job, patch, { updatedAt: Date.now() });
 
   // Le libellé suit toujours l'étape, sauf si l'appelant en impose un
-  // (ex. rendu local en mode démo, où « Veo filme votre produit » serait faux).
+  // (ex. rendu local en mode démo, où « Le moteur filme votre produit » serait faux).
   if (patch.stage && STAGES[patch.stage]) {
     if (patch.stageLabel === undefined) job.stageLabel = STAGES[patch.stage].label;
     if (patch.progress === undefined) job.progress = STAGES[patch.stage].progress;

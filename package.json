@@ -3,13 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Animateur de Photos Produit — transforme une photo de produit en vidéo publicitaire animée avec Veo",
+  "description": "Animateur de Photos Produit — transforme une photo de produit en vidéo publicitaire animée par un moteur image-to-video",
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "test": "node scripts/smoke-test.mjs && node scripts/check-ui-hidden.mjs",
     "test:catalog": "node scripts/check-catalog.mjs",
-    "test:providers": "node scripts/check-providers.mjs && node scripts/check-provider-schema.mjs"
+    "test:providers": "node scripts/check-providers.mjs && node scripts/check-provider-schema.mjs",
+    "test:keys": "node scripts/check-api-keys.mjs"
   },
   "engines": {
     "node": ">=20"
